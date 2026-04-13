@@ -1,0 +1,49 @@
+.env
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Dependency directories
+node_modules/
+
+# Prisma generated artifacts
+/prisma/.env
+/prisma/dev.db
+/prisma/.DS_Store
+
+# Generated Prisma client
+/src/generated/
+/src/generated/prisma
+
+# Environment files
+.env
+.env.*
+
+# VS Code settings
+.vscode/
+
+# Misc
+.idea/
+*.swp
+*.swo
+
+# Ignore local files that should not be pushed
+logic_practice.js
+info.api.md
+migration.sql
