@@ -1,11 +1,11 @@
-import { sendError } from "../utils/error.utils.js";
+import { AppError } from "../utils/error.utils.js";
 
 // Middleware to restrict access based on user roles.
 
 const authorizeRoles = (...allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
-      return next(sendError("Not Authenticated", 401));
+      return next(AppError.unauthorized("Not authenticated"));
     }
 
     // "Owner" has absolute access to all resources
@@ -16,9 +16,8 @@ const authorizeRoles = (...allowedRoles) => {
     // Check if the user's role is explicitly permitted for this route
     if (!allowedRoles.includes(req.user.role)) {
       return next(
-        sendError(
+        AppError.forbidden(
           `Role (${req.user.role}) is not allowed to access this resource`,
-          403,
         ),
       );
     }

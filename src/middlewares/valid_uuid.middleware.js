@@ -1,5 +1,5 @@
 import Joi from "joi";
-import { sendError } from "../utils/error.utils.js";
+import { AppError } from "../utils/error.utils.js";
 
 const validateUUID = (req, res, next) => {
   const schema = Joi.string()
@@ -10,7 +10,12 @@ const validateUUID = (req, res, next) => {
 
   if (error) {
     return next(
-      sendError("Invalid id format", 400, error.message, "INVALID_ID_FORMAT"),
+      AppError.validationError([
+        {
+          field: "id",
+          message: "Invalid UUID format",
+        },
+      ]),
     );
   }
 

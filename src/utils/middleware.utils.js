@@ -1,4 +1,4 @@
-import { sendError } from "./error.utils.js";
+import { AppError } from "./error.utils.js";
 import { asyncWrapper } from "./trycatch.js";
 
 // Helper fn() to check active both types of user.
@@ -6,15 +6,22 @@ export const isActive = (getUserFn) => {
   return asyncWrapper(async (req, res, next) => {
     const id = req.user?.id;
 
-    if (!id) return next(sendError("Unauthorized: invalid user session", 401));
+    if (!id) {
+      return next(AppError.unauthorized("User session is invalid"));
+    }
 
     const user = await getUserFn(id);
 
-    if (!user) return next(sendError("User not found", 404));
+    if (!user) {
+      return next(AppError.notFound("User"));
+    }
 
-    if (user === true) return next();
+    // if model returns boolean for active status
+    if (user === true) {
+      return next();
+    }
 
-    return next(sendError("Unauthorized: Your account disabled", 401));
+    return next(AppError.forbidden("Your account is disabled"));
   });
 };
 
@@ -23,12 +30,21 @@ export const isExist = (getUserFn) => {
   return asyncWrapper(async (req, res, next) => {
     const { id } = req.params;
 
-    const admin = await getUserFn(id);
-    if (!id) return next(sendError("Admin id is required.", 400));
+    if (!id) {
+      return next(
+        AppError.validationError([
+          { field: "id", message: "User id is required" },
+        ]),
+      );
+    }
 
-    if (!admin) return next(sendError("Admin does not exist.", 404));
+    const user = await getUserFn(id);
 
-    req.targetAdmin = admin;
+    if (!user) {
+      return next(AppError.notFound("User"));
+    }
+
+    req.targetUser = user;
     return next();
   });
 };

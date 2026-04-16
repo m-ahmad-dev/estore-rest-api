@@ -1,39 +1,34 @@
 import jwt from "jsonwebtoken";
 import TokenModel from "../models/token.model.js";
-import { sendError } from "../utils/error.utils.js";
+import { AppError } from "../utils/error.utils.js";
 import { generateAccessToken } from "../utils/jwtoken.utils.js";
 import env from "../configs/env.js";
 import executeTransaction from "../utils/dbTransaction.js";
 
-/**
- * Validate the provided refresh token from the cookie and produce a
- * new access token if the refresh token is valid and not expired.
- */
+// Validate refresh token and generate new access token
+
 const refreshTokenService = async (refreshToken) => {
   if (!refreshToken) {
-    throw sendError("No refresh token provided", 401);
+    throw AppError.unauthorized("No refresh token provided");
   }
 
   try {
     // 1. Check DB first
     const storedToken = await TokenModel.findByToken(refreshToken);
+
     if (!storedToken) {
-      throw sendError("Invalid session. Please login.", 403);
+      throw AppError.forbidden("Invalid session. Please login.");
     }
 
     // 2. DB Expiry Check
     if (storedToken.expiresAt && storedToken.expiresAt < new Date()) {
-      // cleanup expired token
       await executeTransaction(async (client) => {
         await TokenModel.deleteByToken(refreshToken, client);
       });
 
-      throw sendError(
-        "Session Expired. Please login.",
-        403,
-        null,
-        "REFRESH_TOKEN_EXPIRED",
-      );
+      throw new AppError("Session expired. Please login.", 403, {
+        errorCode: "REFRESH_TOKEN_EXPIRED",
+      });
     }
 
     // 3. Verify token
@@ -50,6 +45,7 @@ const refreshTokenService = async (refreshToken) => {
       user: { id: decoded.id, role: decoded.role },
     };
   } catch (error) {
+    // JWT expired
     if (error.name === "TokenExpiredError") {
       const decodedPayload = jwt.decode(refreshToken);
 
@@ -59,16 +55,14 @@ const refreshTokenService = async (refreshToken) => {
         }
       });
 
-      throw sendError(
-        "Session Expired. Please login.",
-        403,
-        null,
-        "REFRESH_TOKEN_EXPIRED",
-      );
+      throw new AppError("Session expired. Please login.", 403, {
+        errorCode: "REFRESH_TOKEN_EXPIRED",
+      });
     }
 
+    // Invalid JWT
     if (error.name === "JsonWebTokenError") {
-      throw sendError("Unauthorized: Invalid refresh token", 401);
+      throw AppError.invalidToken();
     }
 
     throw error;

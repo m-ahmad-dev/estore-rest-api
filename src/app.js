@@ -3,6 +3,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmet from "helmet";
 import errorMiddleware from "./middlewares/error.middleware.js";
+import { AppError } from "./utils/error.utils.js";
 import env from "./configs/env.js";
 import routes from "./routes/routes.js";
 import passport from "passport";
@@ -37,6 +38,11 @@ app.use(
 app.disable("x-powered-by");
 
 app.use(routes);
+
+// 404 route error.
+app.all("/*path", (req, res, next) => {
+  next(AppError.routeNotFound(req.originalUrl));
+});
 
 app.use(errorMiddleware);
 

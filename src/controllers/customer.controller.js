@@ -1,5 +1,9 @@
 import { registerCustomerService } from "../services/customer.service.js";
-import { sendError } from "../utils/error.utils.js";
+import {
+  accessCookieConfig,
+  refreshCookieConfig,
+} from "../utils/cookies.utils.js";
+import { AppError } from "../utils/error.utils.js";
 import { asyncWrapper } from "../utils/trycatch.js";
 
 export const registerCustomer = asyncWrapper(async (req, res, next) => {
@@ -9,29 +13,12 @@ export const registerCustomer = asyncWrapper(async (req, res, next) => {
 
   if (!customer || !accessToken || !refreshToken) {
     return next(
-      sendError(
-        "Internal server error.",
-        500,
-        "Failed to register customer.",
-        "SERVER_ERROR",
-      ),
+      AppError.internal("Failed to register customer. Try again later"),
     );
   }
 
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "Strict",
-    maxAge: 15 * 60 * 1000,
-  });
-
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "Strict",
-    path: "/api/v1/refresh-token",
-    maxAge: 14 * 24 * 60 * 60 * 1000,
-  });
+  res.cookie("accessToken", accessToken, accessCookieConfig);
+  res.cookie("refreshToken", refreshToken, refreshCookieConfig);
 
   res.status(201).json({
     success: true,

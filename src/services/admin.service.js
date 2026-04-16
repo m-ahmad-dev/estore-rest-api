@@ -1,5 +1,5 @@
 import AdminModel from "../models/admin.model.js";
-import { sendError } from "../utils/error.utils.js";
+import { AppError } from "../utils/error.utils.js";
 import { toHash } from "../utils/bcrypt.utils.js";
 import { checkExistPermission } from "../utils/permissions.utils.js";
 import PermissionModel from "../models/permission.model.js";
@@ -15,12 +15,23 @@ export const createAdminService = async (
   permissions = [],
   createdBy,
 ) => {
-  if (!name || !email || !password || !Array.isArray(permissions)) {
-    throw sendError("Required fields are missing.", 400);
-  }
+  const errors = [
+    !name && { field: "name", message: "Name is required" },
+    !email && { field: "email", message: "Email is required" },
+    !password && { field: "password", message: "Password is required" },
+    !Array.isArray(permissions) && {
+      field: "permissions",
+      message: "Permissions must be an array",
+    },
+  ].filter(Boolean);
+
+  if (errors.length) throw AppError.validationError(errors);
 
   const existing = await AdminModel.findByEmail(email);
-  if (existing) throw sendError("Email already in use.", 409);
+
+  if (existing) {
+    throw AppError.conflict("Email already exits");
+  }
 
   const passwordHash = await toHash(password);
 
@@ -40,11 +51,13 @@ export const createAdminService = async (
         permissions,
         client,
       );
-      const existingNames = dbPermissions.map((p) => p.name);
 
+      const existingNames = dbPermissions.map((p) => p.name);
       const missing = checkExistPermission(permissions, existingNames);
-      if (missing !== true)
-        throw sendError(`${missing.join(", ")} do not exist`, 400);
+
+      if (missing !== true) {
+        throw AppError.badRequest(`${missing.join(", ")} do not exist`);
+      }
 
       await PermissionModel.insertPermissions(
         admin.id,
@@ -53,6 +66,7 @@ export const createAdminService = async (
         client,
       );
     }
+
     delete admin.password_hash;
     return admin;
   });
@@ -60,6 +74,7 @@ export const createAdminService = async (
 
 export const getAllAdminsService = async () => {
   const admins = await AdminModel.findAll();
+
   return admins.map((admin) => {
     delete admin.password_hash;
     return {
@@ -72,24 +87,49 @@ export const getAllAdminsService = async () => {
 export const getAdminByIdService = (id) => {
   return executeTransaction(async (client) => {
     const admin = await AdminModel.findById(id, client);
-    if (!admin) throw sendError("Admin not found.", 404);
+
+    if (!admin) throw AppError.notFound("Admin");
 
     const permissions = await PermissionModel.findPermissions(id, client);
+
     delete admin.password_hash;
+
     return { ...admin, permissions };
   });
 };
 
 export const updateAdminStatusService = async (id, status) => {
-  if (!id || typeof status !== "boolean")
-    throw sendError("Invalid status data.", 400);
+  const errors = [
+    !id && { field: "id", message: "Admin id is required" },
+    typeof status !== "boolean" && {
+      field: "status",
+      message: "Status must be boolean",
+    },
+  ].filter(Boolean);
+
+  if (errors.length) throw AppError.validationError(errors);
 
   const updated = await AdminModel.updateStatus(status, id);
-  if (!updated) throw sendError("Failed to update status.", 500);
+
+  if (!updated) {
+    throw AppError.internal("Failed to update admin status");
+  }
+
   return updated;
 };
 
 export const deleteAdminService = async (id) => {
+  if (!id) {
+    throw AppError.validationError([
+      { field: "id", message: "Admin id is required" },
+    ]);
+  }
+
   const deleted = await AdminModel.deleteById(id);
-  if (!deleted) throw sendError("Failed to delete admin.", 500);
+
+  if (!deleted) {
+    throw AppError.internal("Failed to delete admin");
+  }
+
+  return deleted;
 };

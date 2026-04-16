@@ -14,8 +14,6 @@ export const getAdminPermissions = asyncWrapper(async (req, res) => {
 });
 
 export const putAdminPermissions = asyncWrapper(async (req, res) => {
-  console.log(req.params.id);
-  
   const updated = await replaceAdminPermissionsService(
     req.params.id,
     req.body.permissions,

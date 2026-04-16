@@ -1,7 +1,7 @@
 import TokenModel from "../models/token.model.js";
 import { compareHash, toHash } from "./bcrypt.utils.js";
 import executeTransaction from "./dbTransaction.js";
-import { sendError } from "./error.utils.js";
+import { AppError } from "./error.utils.js";
 import { generateAccessToken, generateRefreshToken } from "./jwtoken.utils.js";
 import { tryCatch } from "./trycatch.js";
 
@@ -15,19 +15,31 @@ export const loginService = tryCatch(
     buildResponse,
     role,
   }) => {
-    if (!email || !password)
-      throw sendError("Email and password are required.", 400);
+    const errors = [
+      !email && { field: "email", message: "Email is required" },
+      !password && { field: "password", message: "Password is required" },
+    ].filter(Boolean);
+
+    if (errors.length) throw AppError.validationError(errors);
 
     return await executeTransaction(async (client) => {
       // Check user existence and status
       const user = await findUserByEmail(email, client);
 
-      if (!user) throw sendError("Invalid email or password.", 401);
-      if (!user.is_active) throw sendError("Your account is disabled.", 403);
+      if (!user) {
+        throw AppError.unauthorized("Invalid email or password");
+      }
+
+      if (!user.is_active) {
+        throw AppError.forbidden("Your account is disabled");
+      }
 
       // Verify password
       const isValid = await compareHash(password, user.password_hash);
-      if (!isValid) throw sendError("Invalid email or password.", 401);
+
+      if (!isValid) {
+        throw AppError.unauthorized("Invalid email or password");
+      }
 
       // Generate session tokens
       const payload = buildPayload(user);
@@ -48,12 +60,22 @@ export const loginService = tryCatch(
 // Logout utilty that handles both admin and customers.
 export const logoutService = tryCatch(
   async ({ refreshToken, userId, findUserById }) => {
-    if (!userId) throw sendError("UserId is required.", 400);
+    if (!userId) {
+      throw AppError.validationError([
+        { field: "userId", message: "UserId is required" },
+      ]);
+    }
 
     await executeTransaction(async (client) => {
       const user = await findUserById(userId, client);
-      if (!user) throw sendError("User does not exist.", 404);
-      if (!user.is_active) throw sendError("Your account is disabled.", 403);
+
+      if (!user) {
+        throw AppError.notFound("User");
+      }
+
+      if (!user.is_active) {
+        throw AppError.forbidden("Your account is disabled");
+      }
 
       // Revoke specific session or all device sessions
       if (refreshToken) {

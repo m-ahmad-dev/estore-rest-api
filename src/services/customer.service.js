@@ -2,7 +2,7 @@ import CustomerModel from "../models/customer.model.js";
 import TokenModel from "../models/token.model.js";
 import { toHash } from "../utils/bcrypt.utils.js";
 import executeTransaction from "../utils/dbTransaction.js";
-import { sendError } from "../utils/error.utils.js";
+import { AppError } from "../utils/error.utils.js";
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -13,16 +13,23 @@ import { tryCatch } from "../utils/trycatch.js";
 
 export const registerCustomerService = tryCatch(async (params) => {
   const { firstname, lastname, email, password, phone } = params;
-  if (!firstname || !lastname || !email || !password) {
-    throw sendError(
-      "Make sure no required field is missing.",
-      400,
-      "Bad Request",
-    );
-  }
+
+  // Validation
+  const errors = [
+    !firstname && { field: "firstname", message: "Firstname is required" },
+    !lastname && { field: "lastname", message: "Lastname is required" },
+    !email && { field: "email", message: "Email is required" },
+    !password && { field: "password", message: "Password is required" },
+  ].filter(Boolean);
+
+  if (errors.length) throw AppError.validationError(errors);
+
   const response = await executeTransaction(async (client) => {
     const isExist = await CustomerModel.findByEmail(email, client);
-    if (isExist) throw sendError("Email already exists.", 409);
+
+    if (isExist) {
+      throw AppError.conflict("Email already exists");
+    }
 
     const passwordHash = await toHash(password);
 
@@ -34,9 +41,9 @@ export const registerCustomerService = tryCatch(async (params) => {
       phone,
       client,
     );
+
     const payload = {
       id: customer.id,
-      name: `${customer.first_name} ${customer.last_name}`,
       role: "customer",
     };
 

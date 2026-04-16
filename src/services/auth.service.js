@@ -6,7 +6,7 @@ import TokenModel from "../models/token.model.js";
 import { loginService, logoutService } from "../utils/auth.utils.js";
 import { toHash } from "../utils/bcrypt.utils.js";
 import executeTransaction from "../utils/dbTransaction.js";
-import { sendError } from "../utils/error.utils.js";
+import { AppError } from "../utils/error.utils.js";
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -23,7 +23,6 @@ export const loginAdminService = tryCatch((email, password) => {
     findUserByEmail: (email, client) => AdminModel.findByEmail(email, client),
     buildPayload: (admin) => ({
       id: admin.id,
-      name: admin.name,
       role: admin.role,
     }),
     buildResponse: async (admin, client) => {
@@ -48,14 +47,6 @@ export const logoutAdminService = tryCatch(({ refreshToken, userId }) => {
 // CUSTOMER AUTHENTICATION SERVICES
 
 export const loginCustomerService = tryCatch(async (params) => {
-  if (!params)
-    throw sendError(
-      "Make sure no required field is missing.",
-      400,
-      null,
-      "MISSING_FIELD",
-    );
-
   const { email, password } = params;
 
   return await loginService({
@@ -68,7 +59,6 @@ export const loginCustomerService = tryCatch(async (params) => {
 
     buildPayload: (customer) => ({
       id: customer.id,
-      name: `${customer.first_name} ${customer.last_name}`,
       role: "customer",
     }),
 
@@ -81,6 +71,7 @@ export const loginCustomerService = tryCatch(async (params) => {
 
 export const logoutCustomerService = tryCatch((params) => {
   const { refreshToken, userId } = params;
+
   return logoutService({
     refreshToken,
     userId,
@@ -99,7 +90,9 @@ export const handleGoogleAuthService = async (profile) => {
       googleId,
       client,
     );
+
     let customer;
+
     if (authProvider) {
       customer = await CustomerModel.findById(authProvider.customer_id, client);
     } else {
@@ -117,8 +110,9 @@ export const handleGoogleAuthService = async (profile) => {
         await OAuthModel.create(customer.id, provider, googleId, client);
       }
     }
+
     if (!customer.is_active) {
-      throw sendError("Your account is disabled", 401 );
+      throw AppError.forbidden("Your account is disabled");
     }
 
     const payload = { id: customer.id, role: "customer" };
