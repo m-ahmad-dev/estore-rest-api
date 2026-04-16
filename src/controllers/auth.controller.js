@@ -1,4 +1,6 @@
+import env from "../configs/env.js";
 import {
+  handleGoogleAuthService,
   loginAdminService,
   loginCustomerService,
   logoutAdminService,
@@ -109,4 +111,40 @@ export const logoutCustomer = asyncWrapper(async (req, res) => {
   });
 
   return res.status(200).json({ success: true, message: "Logout successful." });
+});
+
+// Google OAuth CONTROLLERS
+
+export const googleAuthCallback = asyncWrapper(async (req, res) => {
+  try {
+    const { accessToken, refreshToken } = await handleGoogleAuthService(
+      req.user,
+    );
+
+    const isProduction = process.env.NODE_ENV === "production";
+
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "None" : "Lax",
+      maxAge: 15 * 60 * 1000,
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "None" : "Lax",
+      path: "/api/v1/refresh-token",
+      maxAge: 14 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.redirect(
+      `${process.env.FRONTEND_URL}/auth/callback?login=success`,
+    );
+  } catch (error) {
+    console.error("OAuth Error Message:", error);
+    return res.redirect(
+      `${process.env.FRONTEND_URL}/auth/login?error=oauth_failed`,
+    );
+  }
 });

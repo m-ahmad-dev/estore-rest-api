@@ -79,12 +79,16 @@ model customers {
   @@index([email], map: "idx_customers_email")
 }
 
+enum AuthProvider {
+  google
+}
+
 model customer_auth_providers {
-  id          String   @id @default(uuid())
-  customer_id String   @db.Uuid
-  provider    String   @db.VarChar(50)
-  provider_id String   @db.VarChar(255)
-  created_at  DateTime @default(now())
+  id          String       @id @default(uuid())
+  customer_id String       @db.Uuid
+  provider    AuthProvider
+  provider_id String       @db.VarChar(255)
+  created_at  DateTime     @default(now())
 
   customer customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
 

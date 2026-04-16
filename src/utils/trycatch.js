@@ -18,12 +18,6 @@ export const tryCatch = (fn) => {
 };
 
 // Wrapper for that receive (req, res, next) to remove repeatition of tryCatch.
-export const asyncWrapper = (fn) => {
-  return (req, res, next) => {
-    try {
-      Promise.resolve(fn(req, res, next)).catch(next);
-    } catch (err) {
-      next(err);
-    }
-  };
+export const asyncWrapper = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
 };

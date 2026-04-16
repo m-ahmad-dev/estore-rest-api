@@ -8,6 +8,7 @@ import { loginLimiter } from "../middlewares/rateLimiter.js";
 import { loginSchema } from "../validations/admin_route.validations.js";
 import validate from "../middlewares/input_validate.middleware.js";
 import {
+  googleAuthCallback,
   loginAdmin,
   loginCustomer,
   logoutAdmin,
@@ -16,8 +17,10 @@ import {
 import authorizeRoles from "../middlewares/rbac.middleware.js";
 import { registerSchema } from "../validations/customers.validations.js";
 import { registerCustomer } from "../controllers/customer.controller.js";
+import passport from "passport";
 
 const authRoutes = express.Router();
+
 // --- PUBLIC ROUTES ---
 authRoutes.post(
   "/admin/login",
@@ -26,6 +29,19 @@ authRoutes.post(
   loginAdmin,
 );
 authRoutes.post("/login", validate(loginSchema), loginCustomer);
+// Customers OAuth routes.
+authRoutes.get(
+  "/google",
+  passport.authenticate("google", { scope: ["profile", "email"] }),
+);
+authRoutes.get(
+  "/google/callback",
+  passport.authenticate("google", {
+    session: false, // Using JWTs, so we don't need sessions.
+    failureRedirect: `${process.env.FRONTEND_URL}/auth/login?error=google_failed`,
+  }),
+  googleAuthCallback,
+);
 authRoutes.post("/register", validate(registerSchema), registerCustomer);
 
 // --- AUTH REQUIRED ---

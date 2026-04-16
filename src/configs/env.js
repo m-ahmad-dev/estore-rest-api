@@ -17,6 +17,10 @@ const env = {
   OWNER_NAME: process.env.OWNER_NAME,
   // CORS
   FRONTEND_URL: process.env.FRONTEND_URL,
+  // Google auth cedentials:
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+  CALLBACK_URL: process.env.CALLBACK_URL,
 };
 
 export default env;

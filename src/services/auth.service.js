@@ -1,8 +1,16 @@
 import AdminModel from "../models/admin.model.js";
 import CustomerModel from "../models/customer.model.js";
+import OAuthModel from "../models/oauth.model.js";
 import PermissionModel from "../models/permission.model.js";
+import TokenModel from "../models/token.model.js";
 import { loginService, logoutService } from "../utils/auth.utils.js";
+import { toHash } from "../utils/bcrypt.utils.js";
+import executeTransaction from "../utils/dbTransaction.js";
 import { sendError } from "../utils/error.utils.js";
+import {
+  generateAccessToken,
+  generateRefreshToken,
+} from "../utils/jwtoken.utils.js";
 import { tryCatch } from "../utils/trycatch.js";
 
 // ADMIN AUTHENTICATION SERVICES
@@ -79,3 +87,47 @@ export const logoutCustomerService = tryCatch((params) => {
     findUserById: (id, client) => CustomerModel.findById(id, client),
   });
 });
+
+// GOOGLE OAUTH SERVICES
+
+export const handleGoogleAuthService = async (profile) => {
+  const { googleId, email, firstname, lastname, provider } = profile;
+
+  return await executeTransaction(async (client) => {
+    const authProvider = await OAuthModel.findByProviderId(
+      provider,
+      googleId,
+      client,
+    );
+    let customer;
+    if (authProvider) {
+      customer = await CustomerModel.findById(authProvider.customer_id, client);
+    } else {
+      customer = await CustomerModel.findByEmail(email, client);
+
+      if (customer) {
+        await OAuthModel.create(customer.id, provider, googleId, client);
+      } else {
+        customer = await CustomerModel.create(
+          firstname,
+          lastname,
+          email,
+          client,
+        );
+        await OAuthModel.create(customer.id, provider, googleId, client);
+      }
+    }
+    if (!customer.is_active) {
+      throw sendError("Your account is disabled", 401 );
+    }
+
+    const payload = { id: customer.id, role: "customer" };
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
+    const hashrefreshToken = await toHash(refreshToken);
+
+    await TokenModel.insert(customer.id, hashrefreshToken, "customer", client);
+
+    return { accessToken, refreshToken };
+  });
+};

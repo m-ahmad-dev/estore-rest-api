@@ -5,8 +5,8 @@ const CustomerModel = {
     firstname,
     lastname,
     email,
-    passwordHash,
-    phoneNumber,
+    passwordHash = null,
+    phoneNumber = null,
     db = prisma,
   ) => {
     return await db.customers.create({
@@ -40,7 +40,7 @@ const CustomerModel = {
       where: { id: id },
     });
   },
-  
+
   isActive: async (id, db = prisma) => {
     const admin = await db.customers.findUnique({
       where: { id: id },
