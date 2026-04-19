@@ -75,6 +75,7 @@ model customers {
   reviews        reviews[]
   wishlists      wishlists[]
   auth_providers customer_auth_providers[]
+  passwordResets PasswordReset[]
 
   @@index([email], map: "idx_customers_email")
 }
@@ -94,6 +95,19 @@ model customer_auth_providers {
 
   @@unique([provider, provider_id])
   @@index([customer_id])
+}
+
+model PasswordReset {
+  id          String   @id @default(uuid()) @db.Uuid
+  customer_id String   @db.Uuid
+  token_hash  String   @unique
+  expires_at  DateTime
+  used        Boolean  @default(false)
+  created_at  DateTime @default(now())
+
+  customer customers @relation(fields: [customer_id], references: [id])
+
+  @@index([customer_id, token_hash])
 }
 
 // --- PRODUCT CATALOG ---

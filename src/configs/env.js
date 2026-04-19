@@ -21,6 +21,11 @@ const env = {
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   CALLBACK_URL: process.env.CALLBACK_URL,
+  // Gmail configs:
+  GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD,
+  EMAIL_FROM: process.env.GMAIL_USER,
+  // crons cleanup configs:
+  CLEANUP_SCHEDULE: process.env.CLEANUP_SCHEDULE,
 };
 
 export default env;

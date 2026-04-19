@@ -48,6 +48,17 @@ const CustomerModel = {
     });
     return admin?.is_active ?? null;
   },
+
+  updatePassword: async (customerId, passwordHash, db = prisma) => {
+    const customer = await db.customers.update({
+      where: {
+        id: customerId,
+      },
+      data: {
+        password_hash: passwordHash,
+      },
+    });
+  },
 };
 
 export default CustomerModel;

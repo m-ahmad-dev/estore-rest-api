@@ -1,10 +1,12 @@
 import env from "../configs/env.js";
 import {
+  forgotPasswordServices,
   handleGoogleAuthService,
   loginAdminService,
   loginCustomerService,
   logoutAdminService,
   logoutCustomerService,
+  resetPasswordServices,
 } from "../services/auth.service.js";
 import {
   accessCookieConfig,
@@ -74,6 +76,23 @@ export const logoutCustomer = asyncWrapper(async (req, res) => {
   clearAuthCookies(res);
 
   return res.status(200).json({ success: true, message: "Logout successful." });
+});
+
+export const forgotPassword = asyncWrapper(async (req, res) => {
+  const result = await forgotPasswordServices(req.body);
+  return res.status(200).json({
+    success: true,
+    message: "If an account with that email exists, we have sent a reset link.",
+  });
+});
+
+export const resetPassword = asyncWrapper(async (req, res) => {
+  const result = await resetPasswordServices(req.body);
+
+  res.status(200).json({
+    success: true,
+    message: "Password reset successfully.",
+  });
 });
 
 // Google OAuth CONTROLLERS

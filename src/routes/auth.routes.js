@@ -4,18 +4,28 @@ import {
   isCustomerActive,
 } from "../middlewares/check.middleware.js";
 import auth from "../middlewares/auth.middleware.js";
-import { loginLimiter } from "../middlewares/rateLimiter.js";
+import {
+  forgotPasswordLimiter,
+  loginLimiter,
+  resetPasswordLimiter,
+} from "../middlewares/rateLimiter.js";
 import { loginSchema } from "../validations/admin_route.validations.js";
 import validate from "../middlewares/input_validate.middleware.js";
 import {
+  forgotPassword,
   googleAuthCallback,
   loginAdmin,
   loginCustomer,
   logoutAdmin,
   logoutCustomer,
+  resetPassword,
 } from "../controllers/auth.controller.js";
 import authorizeRoles from "../middlewares/rbac.middleware.js";
-import { registerSchema } from "../validations/customers.validations.js";
+import {
+  forgotPasswordSchema,
+  registerSchema,
+  resetPasswordSchema,
+} from "../validations/customers.validations.js";
 import { registerCustomer } from "../controllers/customer.controller.js";
 import passport from "passport";
 
@@ -29,6 +39,18 @@ authRoutes.post(
   loginAdmin,
 );
 authRoutes.post("/login", validate(loginSchema), loginCustomer);
+authRoutes.post(
+  "/forgot-password",
+  forgotPasswordLimiter,
+  validate(forgotPasswordSchema),
+  forgotPassword,
+);
+authRoutes.post(
+  "/reset-password",
+  resetPasswordLimiter,
+  validate(resetPasswordSchema),
+  resetPassword,
+);
 // Customers OAuth routes.
 authRoutes.get(
   "/google",
