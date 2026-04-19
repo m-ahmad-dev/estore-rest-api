@@ -1,7 +1,7 @@
-import prisma from "./configs/db.js";
-import env from "./configs/env.js";
+import prisma from "../configs/db.js";
+import env from "../configs/env.js";
 import chalk from "chalk";
-import { toHash } from "./utils/bcrypt.utils.js";
+import { toHash } from "../utils/bcrypt.utils.js";
 
 async function seedOwner() {
   const {

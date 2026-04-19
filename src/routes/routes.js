@@ -1,6 +1,6 @@
 import express from "express";
 import { apiLimiter } from "../middlewares/rateLimiter.js";
-import seedOwner from "../seed.js";
+import seedOwner from '../seeds/owner.seed.js'
 import refreshAccessToken from "../controllers/token.controller.js";
 import customerRoutes from "./customer.routes.js";
 import adminRoutes from "./admin.routes.js";
