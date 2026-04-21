@@ -99,21 +99,18 @@ export const getAdminByIdService = (id) => {
 };
 
 export const updateAdminStatusService = async (id, status) => {
-  const errors = [
-    !id && { field: "id", message: "Admin id is required" },
-    typeof status !== "boolean" && {
-      field: "status",
-      message: "Status must be boolean",
-    },
-  ].filter(Boolean);
-
-  if (errors.length) throw AppError.validationError(errors);
-
-  const updated = await AdminModel.updateStatus(status, id);
-
-  if (!updated) {
-    throw AppError.internal("Failed to update admin status");
+  if (!status || (status !== "active" && status !== "deactive")) {
+    throw AppError.badRequest(
+      "Invalid status value",
+      'Status must be either "active" or "deactive"',
+    );
   }
+
+  const isActive = status === "active" ? true : false;
+  const updated = await AdminModel.updateStatus(id, isActive);
+
+  if (!updated)
+    throw AppError.internal("Something went worng. Failed to update status");
 
   return updated;
 };

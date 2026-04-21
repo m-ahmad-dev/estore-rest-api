@@ -12,12 +12,13 @@ export const isActive = (getUserFn) => {
 
     const user = await getUserFn(id);
 
-    if (!user) {
+    if (user === null || user === undefined) {
       return next(AppError.notFound("User"));
     }
 
-    // if model returns boolean for active status
-    if (user === true) {
+    const isActive = typeof user === "object" ? user.is_active : user;
+
+    if (isActive === true) {
       return next();
     }
 
@@ -32,9 +33,10 @@ export const isExist = (getUserFn) => {
 
     if (!id) {
       return next(
-        AppError.validationError([
-          { field: "id", message: "User id is required" },
-        ]),
+        AppError.badRequest(
+          "User ID is required",
+          "Missing required parameter: user UUID",
+        ),
       );
     }
 

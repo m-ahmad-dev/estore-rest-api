@@ -8,6 +8,10 @@ const errorMiddleware = (err, req, res, next) => {
   // Normalize error
   let error = err;
 
+  if (err instanceof SyntaxError && err.status === 400 && "body" in err) {
+    error = AppError.badRequest("Invalid JSON format");
+  }
+
   if (!(error instanceof AppError)) {
     error = AppError.internal();
   }

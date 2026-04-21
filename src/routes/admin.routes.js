@@ -26,6 +26,7 @@ import {
   putAdminPermissions,
 } from "../controllers/permissions.controller.js";
 import validateUUID from "../middlewares/valid_uuid.middleware.js";
+import authorizePermission from "../middlewares/pbac.middleware.js";
 
 const adminRoutes = express.Router();
 
@@ -34,28 +35,45 @@ adminRoutes.use(auth);
 // --- ACTIVE CHECK (after auth) ---
 adminRoutes.use(isAdminActive);
 
-// --- OWNER ONLY ---
-adminRoutes.use(authorizeRoles("owner"));
-
-adminRoutes.post("/admins", validate(createAdminSchema), createNewAdmin);
-adminRoutes.get("/admins", getAllAdmins);
-adminRoutes.get("/admins/:id", validateUUID, isExistAdmin, getAdminById);
+adminRoutes.post(
+  "/admins",
+  authorizePermission("admins.create"),
+  validate(createAdminSchema),
+  createNewAdmin,
+);
+adminRoutes.get("/admins", authorizePermission("admins.view"), getAllAdmins);
+adminRoutes.get(
+  "/admins/:id",
+  validateUUID,
+  authorizePermission("admins.view"),
+  isExistAdmin,
+  getAdminById,
+);
 adminRoutes.patch(
   "/admins/:id/status",
   validateUUID,
+  authorizePermission("admins.deactivate"),
   isExistAdmin,
   updateAdminStatus,
 );
-adminRoutes.delete("/admins/:id", validateUUID, isExistAdmin, deleteAdmin);
+adminRoutes.delete(
+  "/admins/:id",
+  validateUUID,
+  authorizePermission("admins.delete"),
+  isExistAdmin,
+  deleteAdmin,
+);
 adminRoutes.get(
   "/admins/:id/permissions",
   validateUUID,
+  authorizePermission("admins.edit"),
   isExistAdmin,
   getAdminPermissions,
 );
 adminRoutes.put(
   "/admins/:id/permissions",
   validateUUID,
+  authorizePermission("admins.edit"),
   validate(permissionSchema),
   isExistAdmin,
   putAdminPermissions,
@@ -63,6 +81,7 @@ adminRoutes.put(
 adminRoutes.post(
   "/admins/:id/permissions",
   validateUUID,
+  authorizePermission("admins.edit"),
   validate(singlePermissionSchema),
   isExistAdmin,
   assignPermission,
@@ -70,6 +89,7 @@ adminRoutes.post(
 adminRoutes.delete(
   "/admins/:id/permissions/:permission",
   validateUUID,
+  authorizePermission("admins.edit"),
   isExistAdmin,
   deleteAdminPermission,
 );

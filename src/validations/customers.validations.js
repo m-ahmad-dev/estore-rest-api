@@ -25,3 +25,14 @@ export const resetPasswordSchema = Joi.object({
   token: Joi.string().required(),
   newPassword: Joi.string().min(8).max(128).required(),
 });
+
+export const updateProfileSchema = Joi.object({
+  firstname: Joi.string().trim().min(2).max(150).required(),
+  lastname: Joi.string().trim().min(2).max(150).required(),
+  email: Joi.string().trim().email().lowercase().required(),
+  phone: Joi.string()
+    .trim()
+    .pattern(/^[0-9]{7,20}$/)
+    .optional()
+    .allow(null, ""),
+});

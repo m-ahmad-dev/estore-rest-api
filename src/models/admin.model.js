@@ -22,6 +22,7 @@ const AdminModel = {
 
   findAll: async (db = prisma) => {
     const admins = await db.admins.findMany({
+      orderBy: { created_at: "asc" },
       include: {
         _count: {
           select: { permissions: true },
