@@ -88,33 +88,36 @@ export const updateProfileServices = async (body, customerId) => {
   if (!body || Object.keys(body).length === 0) {
     throw AppError.validationError("Body is required to update profile");
   }
-  const { firstname, lastname, email, phone } = body;
+
+  const data = {};
+
+  if (body.firstname !== undefined) data.first_name = body.firstname;
+  if (body.lastname !== undefined) data.last_name = body.lastname;
+  if (body.email !== undefined) data.email = body.email;
+  if (body.phone !== undefined) data.phone = body.phone;
 
   return await executeTransaction(async (client) => {
     const customer = await CustomerModel.findById(customerId, client);
 
     if (!customer) throw AppError.notFound("Customer");
 
-    if (email) {
-      const existing = await CustomerModel.findByEmail(email, client);
+    if (body.email) {
+      const existing = await CustomerModel.findByEmail(body.email, client);
       if (existing && existing.id !== customerId) {
         throw AppError.conflict("Email already exists");
       }
     }
 
-    if (phone) {
-      const existing = await CustomerModel.findByPhone(phone, client);
+    if (body.phone) {
+      const existing = await CustomerModel.findByPhone(body.phone, client);
       if (existing && existing.id !== customerId) {
-        throw AppError.conflict("Phone number is already exist.");
+        throw AppError.conflict("Phone number already exists");
       }
     }
 
     const response = await CustomerModel.updateProfile(
       customerId,
-      firstname,
-      lastname,
-      email,
-      phone,
+      data,
       client,
     );
 

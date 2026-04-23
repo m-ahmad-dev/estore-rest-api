@@ -27,12 +27,12 @@ export const resetPasswordSchema = Joi.object({
 });
 
 export const updateProfileSchema = Joi.object({
-  firstname: Joi.string().trim().min(2).max(150).required(),
-  lastname: Joi.string().trim().min(2).max(150).required(),
-  email: Joi.string().trim().email().lowercase().required(),
+  firstname: Joi.string().trim().min(2).max(150).optional(),
+  lastname: Joi.string().trim().min(2).max(150).optional(),
+  email: Joi.string().trim().email().lowercase().optional(),
   phone: Joi.string()
     .trim()
     .pattern(/^[0-9]{7,20}$/)
     .optional()
     .allow(null, ""),
-});
+}).min(1);

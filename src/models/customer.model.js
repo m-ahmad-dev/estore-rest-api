@@ -69,22 +69,10 @@ const CustomerModel = {
     });
   },
 
-  updateProfile: async (
-    customerId,
-    firstname,
-    lastname,
-    email,
-    phone = null,
-    db = prisma,
-  ) => {
+  updateProfile: async (customerId, data, db = prisma) => {
     const customer = await db.customers.update({
       where: { id: customerId },
-      data: {
-        first_name: firstname,
-        last_name: lastname,
-        email: email,
-        phone: phone,
-      },
+      data,
       select: {
         id: true,
         first_name: true,

@@ -34,7 +34,7 @@ customerRoutes.get(
   isCustomerExist,
   getCustomerByID,
 );
-customerRoutes.put(
+customerRoutes.patch(
   "/admin/customers/:id",
   validateUUID,
   authorizePermission("customers.edit"),
@@ -52,7 +52,7 @@ customerRoutes.patch(
 
 customerRoutes.use(isCustomerActive);
 customerRoutes.get("/customers/me", getMyProfile);
-customerRoutes.put(
+customerRoutes.patch(
   "/customers/me",
   validate(updateProfileSchema),
   updateMyProfile,
