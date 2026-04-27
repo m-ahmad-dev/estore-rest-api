@@ -1,6 +1,6 @@
 import app from "./src/app.js";
-import env from "./src/configs/env.js";
-import startCleanupJob from "./src/jobs/cleanup.jobs.js";
+import env from "./src/core/configs/env.js";
+import startCleanupJob from "./src/core/jobs/cleanup.jobs.js";
 
 const PORT = env.PORT;
 

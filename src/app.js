@@ -2,10 +2,10 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmet from "helmet";
-import errorMiddleware from "./middlewares/error.middleware.js";
-import { AppError } from "./utils/error.utils.js";
-import env from "./configs/env.js";
-import routes from "./routes/routes.js";
+import errorMiddleware from "./core/middlewares/error.middleware.js";
+import AppError from "./core/utils/error.utils.js";
+import env from "./core/configs/env.js";
+import routes from "./modules/index.routes.js";
 import passport from "passport";
 
 const app = express();
@@ -18,7 +18,7 @@ app.use(cookieParser());
 // Passport initialize
 app.use(passport.initialize());
 // Load Passport Config (Strategy registration)
-import "./configs/passport.js";
+import "./core/configs/passport.js";
 
 if (env.NODE_ENV === "production") {
   app.use(
