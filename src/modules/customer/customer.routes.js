@@ -1,5 +1,5 @@
 import express from "express";
-import { updateProfileSchema } from "./customers.validations.js";
+import { updateProfileSchema } from "./customer.validations.js";
 import auth from "../../core/middlewares/auth.middleware.js";
 import validate from "../../core/middlewares/input_validate.middleware.js";
 import validateUUID from "../../core/middlewares/valid_uuid.middleware.js";
@@ -33,7 +33,7 @@ customerRoutes.patch(
 customerRoutes.delete("/customers/me", isCustomerActive, deleteAccount);
 
 // Admin access for customer management
-customerRoutes.use(isAdminActive);
+customerRoutes.use("/admin/customers", isAdminActive);
 customerRoutes.get(
   "/admin/customers",
   authorizePermission("customers.view"),

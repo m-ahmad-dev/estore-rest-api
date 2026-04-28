@@ -1,26 +1,17 @@
-import  AppError  from "./error.utils.js";
+import AppError from "./error.utils.js";
 import { asyncWrapper } from "./trycatch.js";
 
 // Helper fn() to check active both types of user.
-export const isActive = (getUserFn) => {
+export const isActive = (getStatusFn) => {
   return asyncWrapper(async (req, res, next) => {
     const id = req.user?.id;
 
-    if (!id) {
-      return next(AppError.unauthorized("User session is invalid"));
-    }
+    if (!id) return next(AppError.unauthorized("User session is invalid"));
 
-    const user = await getUserFn(id);
+    const activeStatus = await getStatusFn(id);
 
-    if (user === null || user === undefined) {
-      return next(AppError.notFound("User"));
-    }
-
-    const isActive = typeof user === "object" ? user.is_active : user;
-
-    if (isActive === true) {
-      return next();
-    }
+    if (activeStatus === null) return next(AppError.notFound("User"));
+    if (activeStatus === true) return next();
 
     return next(AppError.forbidden("Your account is disabled"));
   });
@@ -41,10 +32,7 @@ export const isExist = (getUserFn) => {
     }
 
     const user = await getUserFn(id);
-
-    if (!user) {
-      return next(AppError.notFound("User"));
-    }
+    if (!user) return next(AppError.notFound("User"));
 
     return next();
   });

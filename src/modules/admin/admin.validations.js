@@ -13,12 +13,22 @@ export const createAdminSchema = Joi.object({
     .items(Joi.string().pattern(/^[a-z._*]+$/))
     .unique()
     .default([]),
-});
+})
+  .required()
+  .messages({
+    "any.required": "Request body is missing",
+    "object.base": "Body must be valid object",
+  });
 
 export const loginSchema = Joi.object({
   email: Joi.string().trim().email().required(),
   password: Joi.string().min(8).max(128).required(),
-});
+})
+  .required()
+  .messages({
+    "any.required": "Request body is missing",
+    "object.base": "Body must be valid object",
+  });
 
 export const permissionSchema = Joi.object({
   permissions: Joi.array()
@@ -26,7 +36,12 @@ export const permissionSchema = Joi.object({
     .required()
     .unique()
     .default([]),
-});
+})
+  .required()
+  .messages({
+    "any.required": "Request body is missing",
+    "object.base": "Body must be valid object",
+  });
 
 export const singlePermissionSchema = Joi.object({
   permissions: Joi.array()
@@ -39,4 +54,9 @@ export const singlePermissionSchema = Joi.object({
     .length(1)
     .unique()
     .required(),
-});
+})
+  .required()
+  .messages({
+    "any.required": "Request body is missing",
+    "object.base": "Body must be valid object",
+  });

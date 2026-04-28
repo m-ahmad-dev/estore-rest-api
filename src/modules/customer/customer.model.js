@@ -51,11 +51,13 @@ const CustomerModel = {
   },
 
   isActive: async (id, db = prisma) => {
+    
     const customer = await db.customers.findUnique({
-      where: { id: id },
+      where: { id },
       select: { is_active: true },
     });
-    return customer?.is_active ?? null;
+
+    return customer ? customer.is_active : null;
   },
 
   updatePassword: async (customerId, passwordHash, db = prisma) => {

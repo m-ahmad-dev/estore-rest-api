@@ -18,7 +18,7 @@ import {
   loginSchema,
   registerSchema,
   resetPasswordSchema,
-} from "../customer/customers.validations.js";
+} from "../customer/customer.validations.js";
 import {
   forgotPassword,
   googleAuthCallback,

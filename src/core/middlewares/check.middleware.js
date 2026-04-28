@@ -8,14 +8,10 @@ import {
   checkAdminStatus,
 } from "../../modules/admin/admin.service.js";
 
-export const isAdminActive = isActive(async (id) => await checkAdminStatus(id));
+export const isAdminActive = isActive(checkAdminStatus);
 
-export const isExistAdmin = isExist(async (id) => await checkAdminExist(id));
+export const isExistAdmin = isExist(checkAdminExist);
 
-export const isCustomerActive = isActive(
-  async (id) => await checkCustomerStatus(id),
-);
+export const isCustomerActive = isActive(checkCustomerStatus);
 
-export const isCustomerExist = isExist(
-  async (id) => await checkCustomerExist(id),
-);
+export const isCustomerExist = isExist(checkCustomerExist);

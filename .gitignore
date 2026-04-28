@@ -44,6 +44,6 @@ node_modules/
 *.swo
 
 # Ignore local files that should not be pushed
-logic_practice.js
+dev.js
 info.api.md
 migration.sql

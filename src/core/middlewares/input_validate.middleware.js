@@ -1,4 +1,4 @@
-import  AppError  from "../utils/error.utils.js";
+import AppError from "../utils/error.utils.js";
 
 const validate = (schema) => async (req, res, next) => {
   const { error, value } = schema.validate(req.body, {
@@ -8,8 +8,8 @@ const validate = (schema) => async (req, res, next) => {
 
   if (error) {
     const details = error.details.map((d) => ({
-      message: d.message,
-      path: d.path?.join("."),
+      field: d.path && d.path.length > 0 ? d.path.join(".") : "body",
+      message: d.message.replace(/"/g, ""),
     }));
 
     return next(AppError.validationError(details));
