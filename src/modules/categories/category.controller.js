@@ -7,7 +7,7 @@ export const createCategory = asyncWrapper(async (req, res) => {
   res.status(201).json(result);
 });
 
-export const getAllCategories = asyncWrapper(async (req, res) => {
+export const getAllCategoriesFlat = asyncWrapper(async (req, res) => {
   const result = await categoryService.getAll(req.query);
   res.status(200).json(result);
 });
@@ -25,4 +25,22 @@ export const updateCategory = asyncWrapper(async (req, res) => {
 export const removeCategory = asyncWrapper(async (req, res) => {
   await categoryService.remove(req.params.id);
   return res.status(204).send();
+});
+
+// Public Accessed
+
+export const getAllCategoriesTree = asyncWrapper(async (req, res) => {
+  const result = await categoryService.getAllTree();
+  res.status(200).json(result);
+});
+
+export const getCategoryDetail = asyncWrapper(async (req, res) => {
+  const result = await categoryService.getWithDetail(req.params.slug);
+  res.status(200).json(result);
+});
+
+export const getRootCategories = asyncWrapper(async (req, res) => {
+  const result = await categoryService.getRootParent();
+
+  res.status(200).json(result);
 });

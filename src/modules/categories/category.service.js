@@ -1,7 +1,10 @@
 import executeTransaction from "../../core/utils/dbTransaction.js";
 import AppError from "../../core/utils/error.utils.js";
 import toSlug from "../../core/utils/slug.utils.js";
+import { toHierarchicalTree } from "../../core/utils/structure.utils.js";
 import CategoryModel from "./category.model.js";
+import { isDescendant, getAncestors } from "./category.utils.js";
+import util from "util";
 
 export const create = async (body) => {
   return await executeTransaction(async (client) => {
@@ -62,13 +65,14 @@ export const getAll = async (query) => {
   const startTime = Date.now();
 
   // Data Retrieval
-  const { categories, totalFilteredCount } = await CategoryModel.findAll(
-    search,
-    skip,
-    limit,
-    sortBy,
-    orderBy,
-  );
+  const { categories, totalFilteredCount } =
+    await CategoryModel.findAllWithPagination(
+      search,
+      skip,
+      limit,
+      sortBy,
+      orderBy,
+    );
 
   const totalPages = Math.ceil(totalFilteredCount / limit);
 
@@ -151,16 +155,59 @@ export const remove = async (categoryId) => {
   });
 };
 
-// Depth-first search to detect circular references.
-async function isDescendant(rootId, targetId, client) {
-  const children = await CategoryModel.findChild(rootId, client);
+export const getAllTree = async () => {
+  const { categories } = await CategoryModel.findAllFlat();
+  const data = toHierarchicalTree(categories);
 
-  for (const child of children) {
-    if (
-      child.id === targetId ||
-      (await isDescendant(child.id, targetId, client))
-    )
-      return true;
+  return {
+    success: true,
+    message: "Data retrieved successfully",
+    categories: data,
+  };
+};
+
+export const getWithDetail = async (slug) => {
+  if (!slug || typeof slug !== "string" || slug.trim() === "") {
+    throw AppError.badRequest(
+      "Slug parameter is required",
+      "Missing or invalid slug",
+    );
   }
-  return false;
-}
+
+  return await executeTransaction(async (client) => {
+    const category = await CategoryModel.findByNameOrSlug(
+      undefined,
+      slug,
+      client,
+    );
+    if (!category) throw AppError.notFound("Category");
+
+    // Build full ancestor chain
+    const ancestors = category.parent_id
+      ? await getAncestors(category.parent_id, client)
+      : [];
+
+    // Direct children of this category
+    const children = await CategoryModel.findChild(category.id, client);
+
+    return {
+      success: true,
+      message: "Data retrieved successfully",
+      category: {
+        ...category,
+        ancestors,
+        children,
+        depth: ancestors.length,
+      },
+    };
+  });
+};
+
+export const getRootParent = async () => {
+  const categories = await CategoryModel.roots();
+  return {
+    success: true,
+    message: "Data retrieved successfully",
+    categories,
+  };
+};

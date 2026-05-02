@@ -29,15 +29,26 @@ const CategoryModel = {
   },
 
   findByNameOrSlug: async (name, slug, db = prisma) => {
+    const filters = [];
+    if (name) filters.push({ name });
+    if (slug) filters.push({ slug });
+
+    if (!filters.length) return null;
+
     return await db.categories.findFirst({
-      where: {
-        OR: [{ name }, { slug }],
-      },
+      where: { OR: filters },
       select: CATEGORY_SELECT_FIELDS,
     });
   },
 
-  findAll: async (search, skip, limit, sortBy, sortOrder, db = prisma) => {
+  findAllWithPagination: async (
+    search,
+    skip,
+    limit,
+    sortBy,
+    sortOrder,
+    db = prisma,
+  ) => {
     const where = search
       ? {
           OR: [
@@ -64,6 +75,17 @@ const CategoryModel = {
     return { categories, totalFilteredCount };
   },
 
+  findAllFlat: async (db = prisma) => {
+    return await db.categories.findMany({
+      where: { is_active: true },
+      orderBy: { name: "asc" },
+      select: {
+        ...CATEGORY_SELECT_FIELDS,
+        _count: { select: { products: true } },
+      },
+    });
+  },
+
   findChild: async (parent_id, db = prisma) => {
     return await db.categories.findMany({
       where: { parent_id },
@@ -82,6 +104,17 @@ const CategoryModel = {
   delete: async (categoryId, db = prisma) => {
     return await db.categories.delete({
       where: { id: categoryId },
+    });
+  },
+
+  roots: async (db = prisma) => {
+    return await db.categories.findMany({
+      where: { parent_id: null, is_active: true },
+      orderBy: { name: "asc" },
+      select: {
+        ...CATEGORY_SELECT_FIELDS,
+        _count: { select: { products: true } },
+      },
     });
   },
 };
