@@ -73,10 +73,7 @@ export const deleteAccount = asyncWrapper(async (req, res) => {
 // Controllers for customers manage by admin:
 
 export const getAllCustomers = asyncWrapper(async (req, res) => {
-  const page = parseInt(req.query.page) || 1; // Default to page 1
-  const limit = parseInt(req.query.limit) || 10; // Default to 10 items
-  const result = await getAllCustomerServices(page, limit);
-
+  const result = await getAllCustomerServices(req.query);
   res.status(200).json(result);
 });
 

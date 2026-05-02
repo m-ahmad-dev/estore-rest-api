@@ -51,7 +51,6 @@ const CustomerModel = {
   },
 
   isActive: async (id, db = prisma) => {
-    
     const customer = await db.customers.findUnique({
       where: { id },
       select: { is_active: true },
@@ -97,12 +96,23 @@ const CustomerModel = {
     });
   },
 
-  // Get all customers with pagination.
-  getAll: async (skip, limit, db = prisma) => {
+  // Get all customers with pagination and search.
+  getAll: async (search, skip, limit, sortBy, orderBy, db = prisma) => {
+    const where = search
+      ? {
+          OR: [
+            { first_name: { contains: search, mode: "insensitive" } },
+            { last_name: { contains: search, mode: "insensitive" } },
+            { email: { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : {};
+
     const customers = await db.customers.findMany({
-      skip: skip,
+      where,
+      skip,
       take: limit,
-      orderBy: { created_at: "desc" },
+      orderBy: { [sortBy]: orderBy },
       include: {
         _count: {
           select: { orders: true },
@@ -110,13 +120,21 @@ const CustomerModel = {
       },
     });
 
-    if (!customers || customers.length === 0) return null;
-
     return customers;
   },
 
-  totalCount: async (db = prisma) => {
-    const count = await db.customers.count();
+  totalCount: async (search = "", db = prisma) => {
+    const where = search
+      ? {
+          OR: [
+            { first_name: { contains: search, mode: "insensitive" } },
+            { last_name: { contains: search, mode: "insensitive" } },
+            { email: { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : {};
+
+    const count = await db.customers.count({ where });
     return count;
   },
 

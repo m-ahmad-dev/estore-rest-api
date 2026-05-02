@@ -142,32 +142,51 @@ export const deleteAccountServices = async (customerId) => {
   });
 };
 
-export const getAllCustomerServices = async (page, limit) => {
-  if (!page || !limit) {
+export const getAllCustomerServices = async (query) => {
+  const page = Math.max(1, parseInt(query.pages) || 1); // Prevent 0 or negative
+  const limit = Math.max(1, parseInt(query.limit) || 10);
+  const search = typeof query.search === "string" ? query.search.trim() : "";
+  const sortBy = query.sort || "created_at";
+  const orderBy = query.order || "asc";
+  const skip = (page - 1) * limit;
+
+  // Validation Logic
+  const allowedSortFields = ["first_name", "last_name", "email", "created_at"];
+  if (!allowedSortFields.includes(sortBy)) {
     throw AppError.badRequest(
-      "Missing required query parameters",
-      'Both "page" and "limit" are required query parameters for pagination',
+      `'sort' must be one of: ${allowedSortFields.join(", ")}`,
+    );
+  }
+
+  const allowedOrders = ["asc", "desc"];
+  if (!allowedOrders.includes(orderBy)) {
+    throw AppError.badRequest(
+      `'order' must be one of: ${allowedOrders.join(" or ")}`,
     );
   }
 
   return await executeTransaction(async (client) => {
-    const skip = (page - 1) * limit;
-    let customers = await CustomerModel.getAll(skip, limit, client);
-    const totalCustomers = await CustomerModel.totalCount(client);
+    let customers = await CustomerModel.getAll(
+      search,
+      skip,
+      limit,
+      sortBy,
+      orderBy,
+      client,
+    );
+    const totalCustomers = await CustomerModel.totalCount(search, client);
 
-    if (customers) {
-      customers = customers.map((customer) => ({
-        id: customer.id,
-        first_name: customer.first_name,
-        last_name: customer.last_name,
-        email: customer.email,
-        phone: customer.phone,
-        is_active: customer.is_active,
-        total_orders: customer._count.orders,
-        created_at: customer.created_at,
-        deleted_at: customer.deleted_at,
-      }));
-    }
+    customers = customers.map((customer) => ({
+      id: customer.id,
+      first_name: customer.first_name,
+      last_name: customer.last_name,
+      email: customer.email,
+      phone: customer.phone,
+      is_active: customer.is_active,
+      total_orders: customer._count.orders,
+      created_at: customer.created_at,
+      deleted_at: customer.deleted_at,
+    }));
 
     const response = {
       success: true,
