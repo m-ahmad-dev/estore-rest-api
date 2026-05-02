@@ -23,7 +23,7 @@ import {
 
 const addressRoutes = express.Router();
 
-addressRoutes.use(auth);
+addressRoutes.use("/addresses", auth);
 addressRoutes.use("/addresses", isCustomerActive);
 
 addressRoutes.post("/addresses", validate(createAddressSchema), createAddress);
@@ -40,6 +40,7 @@ addressRoutes.delete("/addresses/:id", validateUUID, removeAddress);
 // Admin access routes.
 addressRoutes.get(
   "/admin/customers/:id/addresses",
+  auth,
   isAdminActive,
   authorizePermission("customers.view"),
   validateUUID,

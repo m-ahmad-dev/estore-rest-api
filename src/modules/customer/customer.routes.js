@@ -21,7 +21,7 @@ import {
 
 const customerRoutes = express.Router();
 
-customerRoutes.use(auth);
+customerRoutes.use("/customers", auth);
 
 customerRoutes.get("/customers/me", isCustomerActive, getMyProfile);
 customerRoutes.patch(
@@ -33,6 +33,7 @@ customerRoutes.patch(
 customerRoutes.delete("/customers/me", isCustomerActive, deleteAccount);
 
 // Admin access for customer management
+customerRoutes.use("/admin/customers", auth);
 customerRoutes.use("/admin/customers", isAdminActive);
 customerRoutes.get(
   "/admin/customers",
