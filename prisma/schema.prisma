@@ -133,15 +133,27 @@ model products {
 
   @@index([category_id], map: "idx_products_category")
   @@index([slug], map: "idx_products_slug")
+  @@index([is_active], map: "idx_products_active")
+  @@index([created_at], map: "idx_products_created_at")
+  @@index([deleted_at], map: "idx_products_deleted_at")
+  // FILTER + SORT (common in listings)
+  @@index([category_id, is_active], map: "idx_products_category_active")
 }
 
 model product_images {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   product_id String   @db.Uuid
+  key        String
   url        String
-  is_primary Boolean? @default(false)
-  sort_order Int?     @default(0)
+  alt_text   String?  @db.VarChar(255)
+  is_primary Boolean  @default(false)
+  sort_order Int      @default(0)
+  created_at DateTime @default(now())
   product    products @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([product_id])
+  @@index([product_id, is_primary])
+  @@index([product_id, sort_order])
 }
 
 model product_variants {
@@ -158,6 +170,11 @@ model product_variants {
   product           products      @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@index([product_id], map: "idx_variants_product")
+  @@index([product_id, size, color], map: "idx_variants_attributes")
+  @@index([stock_quantity], map: "idx_variants_stock")
+  @@index([price], map: "idx_variants_price")
+  //  Inventory Filtering
+  @@index([stock_quantity, reserved_quantity], map: "idx_variants_inventory")
 }
 
 model carts {
