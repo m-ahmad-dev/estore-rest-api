@@ -7,7 +7,9 @@ const CATEGORY_SELECT_FIELDS = {
   slug: true,
   description: true,
   is_active: true,
+  attribute_rules: true,
   created_at: true,
+  updated_at: true,
 };
 
 const CategoryModel = {
@@ -28,11 +30,12 @@ const CategoryModel = {
     });
   },
 
+  // Looks up a category by name, slug, or both.
+  // Used for duplicate detection — pass only the fields you want to check.
   findByNameOrSlug: async (name, slug, db = prisma) => {
     const filters = [];
     if (name) filters.push({ name });
     if (slug) filters.push({ slug });
-
     if (!filters.length) return null;
 
     return await db.categories.findFirst({
@@ -54,6 +57,7 @@ const CategoryModel = {
           OR: [
             { name: { contains: search, mode: "insensitive" } },
             { slug: { contains: search, mode: "insensitive" } },
+            { description: { contains: search, mode: "insensitive" } },
           ],
         }
       : {};
@@ -75,6 +79,7 @@ const CategoryModel = {
     return { categories, totalFilteredCount };
   },
 
+  // Used by the public tree endpoint — toHierarchicalTree() does the nesting.
   findAllFlat: async (db = prisma) => {
     return await db.categories.findMany({
       where: { is_active: true },

@@ -1,7 +1,8 @@
 import { asyncWrapper } from "../../core/utils/trycatch.js";
 import * as categoryService from "./category.service.js";
 
-// Admin Access Controllers
+// ----- Admin Access -----
+
 export const createCategory = asyncWrapper(async (req, res) => {
   const result = await categoryService.create(req.body);
   res.status(201).json(result);
@@ -27,7 +28,7 @@ export const removeCategory = asyncWrapper(async (req, res) => {
   return res.status(204).send();
 });
 
-// Public Accessed
+// ─── Public Access ───
 
 export const getAllCategoriesTree = asyncWrapper(async (req, res) => {
   const result = await categoryService.getAllTree();
@@ -41,6 +42,37 @@ export const getCategoryDetail = asyncWrapper(async (req, res) => {
 
 export const getRootCategories = asyncWrapper(async (req, res) => {
   const result = await categoryService.getRootParent();
+  res.status(200).json(result);
+});
 
+// ─── Attribute management ───
+
+export const getCategoryAttributes = asyncWrapper(async (req, res) => {
+  const result = await categoryService.getAttributes(req.params.id);
+  res.status(200).json(result);
+});
+
+export const addAttribute = asyncWrapper(async (req, res) => {
+  const result = await categoryService.addAttributeToCategory(
+    req.params.id,
+    req.body,
+  );
+  res.status(201).json(result);
+});
+
+export const updateAttribute = asyncWrapper(async (req, res) => {
+  const result = await categoryService.updateAttributeInCategory(
+    req.params.id,
+    req.params.attrName,
+    req.body,
+  );
+  res.status(200).json(result);
+});
+
+export const removeAttribute = asyncWrapper(async (req, res) => {
+  const result = await categoryService.deleteAttributeFromCategory(
+    req.params.id,
+    req.params.attrName,
+  );
   res.status(200).json(result);
 });

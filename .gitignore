@@ -46,4 +46,4 @@ node_modules/
 # Ignore local files that should not be pushed
 dev.js
 info.api.md
-db.sql
+ondevdb.sql
