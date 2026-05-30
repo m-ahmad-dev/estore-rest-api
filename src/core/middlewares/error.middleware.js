@@ -3,6 +3,10 @@ import env from "../configs/env.js";
 import  AppError  from "../utils/error.utils.js";
 
 const errorMiddleware = (err, req, res, next) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+
   const isDev = env.NODE_ENV === "development";
 
   // Normalize error

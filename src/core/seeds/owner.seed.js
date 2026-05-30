@@ -1,7 +1,7 @@
-import prisma from "../configs/db.js";
-import env from "../configs/env.js";
-import chalk from "chalk";
-import { toHash } from "../utils/bcrypt.utils.js";
+import prisma from '../configs/db.js';
+import env from '../configs/env.js';
+import chalk from 'chalk';
+import { toHash } from '../utils/bcrypt.utils.js';
 
 async function seedOwner() {
   const {
@@ -12,26 +12,23 @@ async function seedOwner() {
 
   // 1. Safety check
   if (!email || !password) {
-    console.error(chalk.red("OWNER_EMAIL or OWNER_PASSWORD missing."));
+    console.error(chalk.red('OWNER_EMAIL or OWNER_PASSWORD missing.'));
     return;
   }
 
   try {
     // 2. DB check — avoid duplicates
     const existing = await prisma.admins.findFirst({
-      where: { role: "owner" },
+      where: { role: 'owner' },
       select: { id: true },
     });
 
-    if (existing) {
-      console.log(chalk.grey.italic("Owner already exists"));
-      return;
-    }
+    if (existing) return;
 
     const password_hash = await toHash(password);
     await prisma.$transaction(async (tx) => {
       const superPermission = await tx.permissions.findFirst({
-        where: { name: "*" },
+        where: { name: '*' },
       });
 
       if (!superPermission) {
@@ -44,7 +41,7 @@ async function seedOwner() {
           name,
           email,
           password_hash,
-          role: "owner",
+          role: 'owner',
           permissions: {
             create: {
               permission_id: superPermission.id,
@@ -56,11 +53,11 @@ async function seedOwner() {
     });
 
     console.log(
-      chalk.greenBright(`Owner seeded successfully → `, chalk.green(email)),
+      chalk.greenBright(`Owner seeded successfully → `, chalk.green(email))
     );
   } catch (error) {
     // We access error.message for cleaner logging
-    console.error(chalk.red("Seeding failed: "), error.message);
+    console.error(chalk.red('Seeding failed: '), error.message);
   }
 }
 

@@ -9,7 +9,7 @@ import { asyncWrapper } from "../../core/utils/trycatch.js";
 
 // ADMIN MANAGEMENT CONTROLLERS
 
-export const createNewAdmin = asyncWrapper(async (req, res, next) => {
+export const createNewAdmin = asyncWrapper(async (req, res) => {
   const { name, email, password, phone, permissions = [] } = req.body;
   const createdBy = req.user?.id ?? null;
 
@@ -29,14 +29,14 @@ export const createNewAdmin = asyncWrapper(async (req, res, next) => {
   });
 });
 
-export const getAllAdmins = asyncWrapper(async (req, res, next) => {
+export const getAllAdmins = asyncWrapper(async (req, res) => {
   const admins = await getAllAdminsService();
   return res
     .status(200)
     .json({ success: true, message: "Data retrieved successfully", admins });
 });
 
-export const getAdminById = asyncWrapper(async (req, res, next) => {
+export const getAdminById = asyncWrapper(async (req, res) => {
   const data = await getAdminByIdService(req.params.id);
   return res.status(200).json({
     success: true,
@@ -45,7 +45,7 @@ export const getAdminById = asyncWrapper(async (req, res, next) => {
   });
 });
 
-export const updateAdminStatus = asyncWrapper(async (req, res, next) => {
+export const updateAdminStatus = asyncWrapper(async (req, res) => {
   const result = await updateAdminStatusService(req.params.id, req.body.status);
 
   return res.status(result ? 200 : 500).json({
@@ -54,7 +54,7 @@ export const updateAdminStatus = asyncWrapper(async (req, res, next) => {
   });
 });
 
-export const deleteAdmin = asyncWrapper(async (req, res, next) => {
+export const deleteAdmin = asyncWrapper(async (req, res) => {
   await deleteAdminService(req.params.id);
   return res
     .status(200)

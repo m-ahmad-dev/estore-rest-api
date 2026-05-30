@@ -1,4 +1,4 @@
-import prisma from "../../core/configs/db.js";
+import prisma from '../../core/configs/db.js';
 
 const CATEGORY_SELECT_FIELDS = {
   id: true,
@@ -44,20 +44,13 @@ const CategoryModel = {
     });
   },
 
-  findAllWithPagination: async (
-    search,
-    skip,
-    limit,
-    sortBy,
-    sortOrder,
-    db = prisma,
-  ) => {
+  findAllWithPagination: async (search, skip, limit, sortBy, sortOrder, db = prisma) => {
     const where = search
       ? {
           OR: [
-            { name: { contains: search, mode: "insensitive" } },
-            { slug: { contains: search, mode: "insensitive" } },
-            { description: { contains: search, mode: "insensitive" } },
+            { name: { contains: search, mode: 'insensitive' } },
+            { slug: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
           ],
         }
       : {};
@@ -83,7 +76,7 @@ const CategoryModel = {
   findAllFlat: async (db = prisma) => {
     return await db.categories.findMany({
       where: { is_active: true },
-      orderBy: { name: "asc" },
+      orderBy: { name: 'asc' },
       select: {
         ...CATEGORY_SELECT_FIELDS,
         _count: { select: { products: true } },
@@ -115,12 +108,30 @@ const CategoryModel = {
   roots: async (db = prisma) => {
     return await db.categories.findMany({
       where: { parent_id: null, is_active: true },
-      orderBy: { name: "asc" },
+      orderBy: { name: 'asc' },
       select: {
         ...CATEGORY_SELECT_FIELDS,
         _count: { select: { products: true } },
       },
     });
+  },
+
+  fetchAncestry: async (categoryId, db = prisma) => {
+    return await db.$queryRaw`
+       WITH RECURSIVE category_tree AS (
+      SELECT id, parent_id, attribute_rules, 0 AS depth
+      FROM "categories"
+      WHERE id = ${categoryId}::uuid
+      UNION ALL
+      SELECT c.id, c.parent_id, c.attribute_rules, ct.depth + 1
+      FROM "categories" c
+      INNER JOIN category_tree ct ON c.id = ct.parent_id
+      WHERE ct.depth < 20
+    )
+    SELECT id, attribute_rules, depth
+    FROM category_tree
+    ORDER BY depth ASC
+    `;
   },
 };
 

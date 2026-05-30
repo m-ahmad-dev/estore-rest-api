@@ -6,13 +6,12 @@ import {
   generateAccessToken,
   generateRefreshToken,
 } from "../../core/utils/jwtoken.utils.js";
-import { tryCatch } from "../../core/utils/trycatch.js";
 import { createSession } from "../token/token.service.js";
 import prisma from "../../core/configs/db.js";
 
 // CUSTOMER MANAGEMENT SERVICES
 
-export const registerCustomerService = tryCatch(async (params) => {
+export const registerCustomerService = async (params) => {
   const { firstname, lastname, email, password, phone } = params;
 
   // Validation
@@ -61,9 +60,9 @@ export const registerCustomerService = tryCatch(async (params) => {
   });
 
   return response;
-});
+};
 
-export const getMyProfileService = tryCatch(async (customerId) => {
+export const getMyProfileService = async (customerId) => {
   if (!customerId) {
     throw AppError.badRequest("Customer id is required.");
   }
@@ -83,7 +82,7 @@ export const getMyProfileService = tryCatch(async (customerId) => {
     is_active: customer.is_active,
     created_at: customer.created_at,
   };
-});
+};
 
 export const updateProfileServices = async (body, customerId) => {
   if (!body || Object.keys(body).length === 0) {

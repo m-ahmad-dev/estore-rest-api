@@ -1,4 +1,4 @@
-import prisma from "../../core/configs/db.js";
+import prisma from '../../core/configs/db.js';
 
 const CustomerModel = {
   create: async (
@@ -7,7 +7,7 @@ const CustomerModel = {
     email,
     passwordHash = null,
     phoneNumber = null,
-    db = prisma,
+    db = prisma
   ) => {
     return await db.customers.create({
       data: {
@@ -60,7 +60,7 @@ const CustomerModel = {
   },
 
   updatePassword: async (customerId, passwordHash, db = prisma) => {
-    const customer = await db.customers.update({
+    await db.customers.update({
       where: {
         id: customerId,
       },
@@ -101,9 +101,9 @@ const CustomerModel = {
     const where = search
       ? {
           OR: [
-            { first_name: { contains: search, mode: "insensitive" } },
-            { last_name: { contains: search, mode: "insensitive" } },
-            { email: { contains: search, mode: "insensitive" } },
+            { first_name: { contains: search, mode: 'insensitive' } },
+            { last_name: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
           ],
         }
       : {};
@@ -123,13 +123,13 @@ const CustomerModel = {
     return customers;
   },
 
-  totalCount: async (search = "", db = prisma) => {
+  totalCount: async (search = '', db = prisma) => {
     const where = search
       ? {
           OR: [
-            { first_name: { contains: search, mode: "insensitive" } },
-            { last_name: { contains: search, mode: "insensitive" } },
-            { email: { contains: search, mode: "insensitive" } },
+            { first_name: { contains: search, mode: 'insensitive' } },
+            { last_name: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
           ],
         }
       : {};
