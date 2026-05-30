@@ -3,7 +3,11 @@ import executeTransaction from '../../../core/utils/dbTransaction.js';
 import ProdVariantsModel from './variants.model.js';
 import AppError from '../../../core/utils/error.utils.js';
 import { findProductById } from '../product.service.js';
-import { prepareVariants } from './variants.utils.js';
+import {
+  prepareVariants,
+  formatAdminVariant,
+  formatPublicVariant,
+} from './variants.utils.js';
 import { validateProductExists } from '../product.utils.js';
 
 // ========= MAIN SERVICES =========
@@ -32,7 +36,7 @@ export const createVariantService = async (
     throw AppError.badRequest('At least one variant is required');
   }
 
-  return await ProdVariantsModel.insertMany(
+  return await ProdVariantsModel.createMany(
     productId,
     preparedVariants,
     client
@@ -109,7 +113,12 @@ export const handleSoftDeleteOrRestore = async (
       );
     }
 
-    await ProdVariantsModel.delUpdate(productId, variantId, deletedAt, client);
+    await ProdVariantsModel.softDeleteOrRestore(
+      productId,
+      variantId,
+      deletedAt,
+      client
+    );
 
     return {
       success: true,
@@ -201,14 +210,9 @@ export const getVariantService = async (productId, variantId, options = {}) => {
 
 // ======== SHARED UTILITIES ========
 
-// Find variant by SKU (used across the application)
-export const findVariantBySKU = async (sku, client = prisma) => {
-  return await ProdVariantsModel.findBySKU(sku, client);
-};
-
 // Delete all variants of a product (used when deleting product)
 export const bulkDeleteVariants = async (productId, client = prisma) => {
-  return await ProdVariantsModel.deleteByProduct(productId, client);
+  return await ProdVariantsModel.deleteAllByProduct(productId, client);
 };
 
 // ========== STOCK OPERATIONS =========
@@ -289,31 +293,6 @@ export const applyStockOperation = async (variant, operation, client) => {
 };
 
 // ==================== RESPONSE FORMATTERS ====================
-
-// Consistent response format for admin variant data
-export const formatAdminVariant = (variant) => ({
-  id: variant.id,
-  product_id: variant.product_id,
-  sku: variant.sku,
-  price: variant.price,
-  attributes: variant.attributes,
-  stock_quantity: variant.stock_quantity,
-  reserved_quantity: variant.reserved_quantity,
-  reorder_level: variant.reorder_level,
-  low_stock: variant.stock_quantity <= variant.reorder_level,
-  deleted_at: variant.deleted_at,
-});
-
-// Consistent response format for public variant data
-export const formatPublicVariant = (variant) => ({
-  id: variant.id,
-  sku: variant.sku,
-  price: variant.price,
-  attributes: variant.attributes,
-  available_quantity: variant.stock_quantity - (variant.reserved_quantity || 0),
-  in_stock:
-    (variant.stock_quantity || 0) - (variant.reserved_quantity || 0) > 0,
-});
 
 // Unified response wrapper for single variant operations
 const formatResponse = (variant) => ({

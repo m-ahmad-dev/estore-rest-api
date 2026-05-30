@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { findVariantBySKU } from './variants.service.js';
+import VariantModel from './variants.model.js';
 import AppError from '../../../core/utils/error.utils.js';
 import { getCategoryLineage } from '../../categories/category.service.js';
 
@@ -11,7 +11,7 @@ const ProductErrorCode = {
 };
 
 // Normalize attributes for deterministic hashing/comparison:
-export const normalize = (value) => {
+const normalize = (value) => {
   if (Array.isArray(value)) return value.map(normalize);
   if (value && typeof value === 'object') {
     return Object.keys(value)
@@ -25,7 +25,7 @@ export const normalize = (value) => {
 };
 
 // Generate deterministic hash for attribute combination:
-export const generateAttributesHash = (attributes) => {
+const generateAttributesHash = (attributes) => {
   const normalized = normalize(attributes);
   return crypto
     .createHash('sha256')
@@ -34,7 +34,7 @@ export const generateAttributesHash = (attributes) => {
 };
 
 // Generate SKU with length safety:
-export const generateSku = (productId, normalizedAttrs) => {
+const generateSku = (productId, normalizedAttrs) => {
   const attrPart = Object.values(normalizedAttrs)
     .map((value) =>
       value === null
@@ -139,7 +139,7 @@ export function validateAttributesWithRules(attributes, rules) {
   }
 }
 
-export function validateVariantBusinessRules(variant) {
+function validateVariantBusinessRules(variant) {
   if ((variant.price ?? 0) < 0) {
     throw AppError.badRequest('Price cannot be negative');
   }
@@ -171,6 +171,29 @@ export const validateReservedStock = (value, helpers) => {
   return value;
 };
 
+export const formatAdminVariant = (variant) => ({
+  id: variant.id,
+  product_id: variant.product_id,
+  sku: variant.sku,
+  price: variant.price,
+  attributes: variant.attributes,
+  stock_quantity: variant.stock_quantity,
+  reserved_quantity: variant.reserved_quantity,
+  reorder_level: variant.reorder_level,
+  low_stock: variant.stock_quantity <= variant.reorder_level,
+  deleted_at: variant.deleted_at,
+});
+
+export const formatPublicVariant = (variant) => ({
+  id: variant.id,
+  sku: variant.sku,
+  price: variant.price,
+  attributes: variant.attributes,
+  available_quantity: variant.stock_quantity - (variant.reserved_quantity || 0),
+  in_stock:
+    (variant.stock_quantity || 0) - (variant.reserved_quantity || 0) > 0,
+});
+
 //* ====== Helper Services ======
 
 // Prepare and validate variants for creation/update:
@@ -198,7 +221,7 @@ export async function prepareVariants(productId, variants, categoryId, client) {
 
     let sku = variant.sku?.trim();
 
-    if (!sku || (await findVariantBySKU(sku, client))) {
+    if (!sku || (await VariantModel.findBySKU(sku, client))) {
       sku = generateSku(productId, normalized);
     }
 

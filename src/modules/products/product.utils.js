@@ -14,7 +14,7 @@ import {
 import {
   formatAdminVariant,
   formatPublicVariant,
-} from './variants/variants.service.js';
+} from './variants/variants.utils.js';
 
 const ProductErrorCode = {
   DUPLICATE_SLUG: 'PRODUCT_DUPLICATE_SLUG',
