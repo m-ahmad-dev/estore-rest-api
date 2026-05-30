@@ -1,34 +1,24 @@
-import Joi from "joi";
-import AppError from "../utils/error.utils.js";
+import Joi from 'joi';
+import AppError from '../utils/error.utils.js';
+
+const uuidSchema = Joi.string()
+  .guid({ version: ['uuidv1', 'uuidv2', 'uuidv3', 'uuidv4', 'uuidv5'] })
+  .required();
+
+const UUID_PARAM_PATTERN = /^[a-zA-Z]*[Ii]d$/; // matches: id, userId, variantId, categoryId, etc.
 
 const validateUUID = (req, res, next) => {
-  const schema = Joi.string()
-    .guid({ version: ["uuidv1", "uuidv2", "uuidv3", "uuidv4", "uuidv5"] })
-    .required();
+  const uuidParams = Object.keys(req.params).filter((key) => UUID_PARAM_PATTERN.test(key));
 
-  const id = req.params.id;
+  if (uuidParams.length === 0) return next();
 
-  if (!id) {
-    return next(
-      AppError.badRequest(
-        "User ID is required",
-        "Missing required parameter: user UUID",
-      ),
-    );
-  }
+  const errors = uuidParams.reduce((acc, param) => {
+    const { error } = uuidSchema.validate(req.params[param]);
+    if (error) acc.push({ field: param, message: `Invalid UUID format for '${param}'` });
+    return acc;
+  }, []);
 
-  const { error } = schema.validate(id);
-
-  if (error) {
-    return next(
-      AppError.validationError([
-        {
-          field: "id",
-          message: "Invalid UUID format",
-        },
-      ]),
-    );
-  }
+  if (errors.length > 0) return next(AppError.validationError(errors));
 
   next();
 };

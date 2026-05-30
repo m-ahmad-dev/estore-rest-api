@@ -1,4 +1,3 @@
-import env from "../../core/configs/env.js";
 import {
   accessCookieConfig,
   clearAuthCookies,
@@ -79,7 +78,7 @@ export const logoutCustomer = asyncWrapper(async (req, res) => {
 });
 
 export const forgotPassword = asyncWrapper(async (req, res) => {
-  const result = await forgotPasswordServices(req.body);
+  await forgotPasswordServices(req.body);
   return res.status(200).json({
     success: true,
     message: "If an account with that email exists, we have sent a reset link.",
@@ -87,7 +86,7 @@ export const forgotPassword = asyncWrapper(async (req, res) => {
 });
 
 export const resetPassword = asyncWrapper(async (req, res) => {
-  const result = await resetPasswordServices(req.body);
+  await resetPasswordServices(req.body);
 
   res.status(200).json({
     success: true,
@@ -102,8 +101,6 @@ export const googleAuthCallback = asyncWrapper(async (req, res) => {
     const { accessToken, refreshToken } = await handleGoogleAuthService(
       req.user,
     );
-
-    const isProduction = process.env.NODE_ENV === "production";
 
     res.cookie("accessToken", accessToken, accessCookieConfig);
     res.cookie("refreshToken", refreshToken, refreshCookieConfig);

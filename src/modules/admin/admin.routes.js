@@ -1,10 +1,8 @@
 import express from "express";
-import authorizeRoles from "../../core/middlewares/rbac.middleware.js";
 import auth from "../../core/middlewares/auth.middleware.js";
 import validate from "../../core/middlewares/input_validate.middleware.js";
 import {
   createAdminSchema,
-  loginSchema,
   permissionSchema,
   singlePermissionSchema,
 } from "./admin.validations.js";

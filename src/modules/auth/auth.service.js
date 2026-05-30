@@ -1,33 +1,29 @@
-import OAuthModel from "./oauth.model.js";
-import PasswordReset from "./password_reset.model.js";
-import { loginService, logoutService } from "./auth.utils.js";
-import { compareHash, toHash } from "../../core/utils/bcrypt.utils.js";
-import executeTransaction from "../../core/utils/dbTransaction.js";
-import AppError from "../../core/utils/error.utils.js";
-import {
-  generateAccessToken,
-  generateRefreshToken,
-} from "../../core/utils/jwtoken.utils.js";
-import { tryCatch } from "../../core/utils/trycatch.js";
-import crypto from "crypto";
-import EmailService from "./email.service.js";
-import { findAdminByEmail, findAdminById } from "../admin/admin.service.js";
-import { adminPermissions } from "../permissions/permissions.service.js";
+import OAuthModel from './oauth.model.js';
+import PasswordReset from './password_reset.model.js';
+import { loginService, logoutService } from './auth.utils.js';
+import { toHash } from '../../core/utils/bcrypt.utils.js';
+import executeTransaction from '../../core/utils/dbTransaction.js';
+import AppError from '../../core/utils/error.utils.js';
+import { generateAccessToken, generateRefreshToken } from '../../core/utils/jwtoken.utils.js';
+import crypto from 'crypto';
+import EmailService from './email.service.js';
+import { findAdminByEmail, findAdminById } from '../admin/admin.service.js';
+import { adminPermissions } from '../permissions/permissions.service.js';
 import {
   findCustomerByEmail,
   findCustomerById,
   insertCustomer,
   updateCustomerPassword,
-} from "../customer/customer.service.js";
-import { createSession } from "../token/token.service.js";
+} from '../customer/customer.service.js';
+import { createSession } from '../token/token.service.js';
 
 // ADMIN AUTHENTICATION SERVICES
 
-export const loginAdminService = tryCatch((email, password) => {
+export const loginAdminService = (email, password) => {
   return loginService({
     email,
     password,
-    role: "admin",
+    role: 'admin',
     findUserByEmail: (email, client) => findAdminByEmail(email, client),
     buildPayload: (admin) => ({
       id: admin.id,
@@ -39,31 +35,31 @@ export const loginAdminService = tryCatch((email, password) => {
       return { admin, permissions };
     },
   });
-});
+};
 
-export const logoutAdminService = tryCatch(({ refreshToken, userId }) => {
+export const logoutAdminService = ({ refreshToken, userId }) => {
   return logoutService({
     refreshToken,
     userId,
     findUserById: (id, client) => findAdminById(id, client),
   });
-});
+};
 
 // CUSTOMER AUTHENTICATION SERVICES
 
-export const loginCustomerService = tryCatch(async (params) => {
+export const loginCustomerService = async (params) => {
   const { email, password } = params;
 
   return await loginService({
     email,
     password,
-    role: "customer",
+    role: 'customer',
 
     findUserByEmail: (email, client) => findCustomerByEmail(email, client),
 
     buildPayload: (customer) => ({
       id: customer.id,
-      role: "customer",
+      role: 'customer',
     }),
 
     buildResponse: async (customer) => {
@@ -71,9 +67,9 @@ export const loginCustomerService = tryCatch(async (params) => {
       return { customer };
     },
   });
-});
+};
 
-export const logoutCustomerService = tryCatch((params) => {
+export const logoutCustomerService = (params) => {
   const { refreshToken, userId } = params;
 
   return logoutService({
@@ -81,13 +77,11 @@ export const logoutCustomerService = tryCatch((params) => {
     userId,
     findUserById: (id, client) => findCustomerById(id, client),
   });
-});
+};
 
 export const forgotPasswordServices = async (req) => {
   if (!req || !req.email) {
-    throw AppError.validationError([
-      { field: "email", message: "Email is required" },
-    ]);
+    throw AppError.validationError([{ field: 'email', message: 'Email is required' }]);
   }
 
   const { email } = req;
@@ -99,15 +93,15 @@ export const forgotPasswordServices = async (req) => {
 
     if (!customer) return; // prevent email enumeration
 
-    token = crypto.randomBytes(32).toString("hex");
+    token = crypto.randomBytes(32).toString('hex');
 
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
     await PasswordReset.insert(
       customer.id,
       tokenHash,
       new Date(Date.now() + 15 * 60 * 1000),
-      client,
+      client
     );
   });
 
@@ -121,23 +115,23 @@ export const forgotPasswordServices = async (req) => {
 
 export const resetPasswordServices = async (params) => {
   const errors = [
-    !params.token && { field: "token", message: "Token is required" },
+    !params.token && { field: 'token', message: 'Token is required' },
     !params.newPassword && {
-      field: "newPassword",
-      message: "Password is required",
+      field: 'newPassword',
+      message: 'Password is required',
     },
   ].filter(Boolean);
 
   if (errors.length) throw AppError.validationError(errors);
 
   const { token, newPassword } = params;
-  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
   await executeTransaction(async (client) => {
     const record = await PasswordReset.findByToken(tokenHash, client);
 
     if (!record || record.used || record.expires_at < new Date()) {
-      throw AppError.unauthorized("Invalid or expired reset token");
+      throw AppError.unauthorized('Invalid or expired reset token');
     }
 
     const passwordHash = await toHash(newPassword);
@@ -153,11 +147,7 @@ export const handleGoogleAuthService = async (profile) => {
   const { googleId, email, firstname, lastname, provider } = profile;
 
   return await executeTransaction(async (client) => {
-    const authProvider = await OAuthModel.findByProviderId(
-      provider,
-      googleId,
-      client,
-    );
+    const authProvider = await OAuthModel.findByProviderId(provider, googleId, client);
 
     let customer;
 
@@ -169,27 +159,19 @@ export const handleGoogleAuthService = async (profile) => {
       if (customer) {
         await OAuthModel.create(customer.id, provider, googleId, client);
       } else {
-        customer = await insertCustomer(
-          firstname,
-          lastname,
-          email,
-          null,
-          null,
-          client,
-        );
+        customer = await insertCustomer(firstname, lastname, email, null, null, client);
         await OAuthModel.create(customer.id, provider, googleId, client);
       }
     }
 
-    if (!customer.is_active)
-      throw AppError.forbidden("Your account is disabled");
+    if (!customer.is_active) throw AppError.forbidden('Your account is disabled');
 
-    const payload = { id: customer.id, role: "customer" };
+    const payload = { id: customer.id, role: 'customer' };
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
     const hashrefreshToken = await toHash(refreshToken);
 
-    await createSession(customer.id, hashrefreshToken, "customer", client);
+    await createSession(customer.id, hashrefreshToken, 'customer', client);
 
     return { accessToken, refreshToken };
   });

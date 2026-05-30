@@ -117,7 +117,7 @@ model categories {
 
 model products {
   id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  category_id String?            @db.Uuid
+  category_id String             @db.Uuid
   name        String             @db.VarChar(255)
   slug        String             @unique @db.VarChar(255)
   description String?
@@ -127,7 +127,7 @@ model products {
   deleted_at  DateTime?          @db.Timestamp(6)
   images      product_images[]
   variants    product_variants[]
-  category    categories?        @relation(fields: [category_id], references: [id])
+  category    categories         @relation(fields: [category_id], references: [id])
   reviews     reviews[]
   wishlists   wishlists[]
 
@@ -144,13 +144,14 @@ model product_images {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   product_id String   @db.Uuid
   key        String
-  url        String
+  url        String?
   alt_text   String?  @db.VarChar(255)
   is_primary Boolean  @default(false)
   sort_order Int      @default(0)
   created_at DateTime @default(now())
   product    products @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
+  @@unique([product_id, key])
   @@index([product_id])
   @@index([product_id, is_primary])
   @@index([product_id, sort_order])
@@ -160,21 +161,22 @@ model product_variants {
   id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   product_id        String        @db.Uuid
   sku               String        @unique @db.VarChar(100)
-  attributes        Json?
+  attributes        Json          @default("{}")
+  attributes_hash   String        @db.VarChar(64)
   price             Decimal       @db.Decimal(10, 2)
-  stock_quantity    Int?          @default(0)
-  reserved_quantity Int?          @default(0)
-  reorder_level     Int?          @default(10)
+  stock_quantity    Int           @default(0)
+  reserved_quantity Int           @default(0)
+  reorder_level     Int           @default(5)
+  deleted_at        DateTime?     @db.Timestamp(6)
+  product           products      @relation(fields: [product_id], references: [id], onDelete: Cascade)
   cart_items        cart_items[]
   order_items       order_items[]
-  product           products      @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
-  @@index([product_id], map: "idx_variants_product")
-  @@index([product_id, size, color], map: "idx_variants_attributes")
-  @@index([stock_quantity], map: "idx_variants_stock")
-  @@index([price], map: "idx_variants_price")
-  //  Inventory Filtering
-  @@index([stock_quantity, reserved_quantity], map: "idx_variants_inventory")
+  @@unique([product_id, attributes_hash])
+  @@index([product_id])
+  @@index([price])
+  @@index([stock_quantity])
+  @@index([stock_quantity, reserved_quantity])
 }
 
 model carts {
