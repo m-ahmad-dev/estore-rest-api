@@ -183,10 +183,19 @@ model carts {
   id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   customer_id String?      @db.Uuid
   session_id  String?      @db.VarChar(255)
+  coupon_id   String?      @db.Uuid
+  status      cart_status  @default(ACTIVE)
+  created_at  DateTime     @default(now()) @db.Timestamp(6)
+  updated_at  DateTime     @updatedAt @db.Timestamp(6)
   expires_at  DateTime?    @db.Timestamp(6)
-  updated_at  DateTime?    @default(now()) @db.Timestamp(6)
-  items       cart_items[]
   customer    customers?   @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  coupon      coupons?     @relation(fields: [coupon_id], references: [id], onDelete: SetNull)
+  items       cart_items[]
+
+  @@index([customer_id])
+  @@index([session_id])
+  @@index([coupon_id])
+  @@index([status])
 }
 
 model cart_items {
@@ -194,11 +203,14 @@ model cart_items {
   cart_id    String           @db.Uuid
   variant_id String           @db.Uuid
   quantity   Int              @default(1)
+  created_at DateTime         @default(now()) @db.Timestamp(6)
+  updated_at DateTime         @updatedAt @db.Timestamp(6)
   cart       carts            @relation(fields: [cart_id], references: [id], onDelete: Cascade)
-  variant    product_variants @relation(fields: [variant_id], references: [id], onDelete: Cascade)
+  variant    product_variants @relation(fields: [variant_id], references: [id], onDelete: Restrict)
 
   @@unique([cart_id, variant_id])
-  @@index([cart_id], map: "idx_cart_items_cart")
+  @@index([cart_id])
+  @@index([variant_id])
 }
 
 model orders {
@@ -257,16 +269,26 @@ model addresses {
 }
 
 model coupons {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code            String    @unique @db.VarChar(50)
-  type            String    @db.VarChar(20)
-  value           Decimal   @db.Decimal(10, 2)
-  min_order_value Decimal?  @default(0) @db.Decimal(10, 2)
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code            String      @unique @db.VarChar(50)
+  type            coupon_type
+  value           Decimal     @db.Decimal(10, 2)
+  min_order_value Decimal?    @db.Decimal(10, 2)
+  max_discount    Decimal?    @db.Decimal(10, 2)
   max_uses        Int?
-  used_count      Int?      @default(0)
-  is_active       Boolean?  @default(true)
-  expires_at      DateTime? @db.Timestamp(6)
-  orders          orders[]
+  used_count      Int         @default(0)
+  is_active       Boolean     @default(true)
+  starts_at       DateTime?   @db.Timestamp(6)
+  expires_at      DateTime?   @db.Timestamp(6)
+  created_at      DateTime    @default(now()) @db.Timestamp(6)
+  updated_at      DateTime    @updatedAt @db.Timestamp(6)
+
+  orders orders[]
+  carts  carts[]
+
+  @@index([is_active])
+  @@index([code])
+  @@index([is_active, starts_at, expires_at])
 }
 
 model payments {
@@ -332,4 +354,15 @@ model refresh_tokens {
 
 enum AuthProvider {
   google
+}
+
+enum coupon_type {
+  PERCENTAGE
+  FIXED
+}
+
+enum cart_status {
+  ACTIVE
+  ABANDONED
+  CONVERTED
 }
