@@ -304,3 +304,9 @@ const formatResponse = (variant) => ({
       variant.stock_quantity - (variant.reserved_quantity || 0),
   },
 });
+
+// Shared Services:
+export const findVariantById = async (variantId, client) => {
+  const variant = await ProdVariantsModel.findById(variantId, client);
+  return variant;
+};

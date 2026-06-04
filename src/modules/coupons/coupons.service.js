@@ -4,7 +4,10 @@ import CouponsModel from './coupons.model.js';
 
 export const createCouponService = async (payload) => {
   return await executeTransaction(async (client) => {
-    const existing = await CouponsModel.findByCode(payload.code, client);
+    const existing = await CouponsModel.findByCode(
+      payload.code,
+      client
+    );
 
     if (existing) {
       throw AppError.conflict(
@@ -38,12 +41,18 @@ export const updateCouponService = async (id, payload) => {
   return executeTransaction(async (client) => {
     const existingCoupon = await CouponsModel.findById(id, client);
     if (!existingCoupon) {
-      throw AppError.notFound('Coupon', `No coupon found with id: ${id}`);
+      throw AppError.notFound(
+        'Coupon',
+        `No coupon found with id: ${id}`
+      );
     }
 
     // Guard Clauses & Validations
     if (payload.code && payload.code !== existingCoupon.code) {
-      const codeExists = await CouponsModel.findByCode(payload.code, client);
+      const codeExists = await CouponsModel.findByCode(
+        payload.code,
+        client
+      );
       if (codeExists) {
         throw AppError.conflict(
           'Coupon code already exists',
@@ -65,9 +74,15 @@ export const updateCouponService = async (id, payload) => {
 
     // Strips out undefined values dynamically using Object.fromEntries
     const updateData = Object.fromEntries(
-      Object.entries({ ...payload }).filter(([_, val]) => val !== undefined)
+      Object.entries({ ...payload }).filter(
+        ([_, val]) => val !== undefined
+      )
     );
-    const updatedCoupon = await CouponsModel.update(id, updateData, client);
+    const updatedCoupon = await CouponsModel.update(
+      id,
+      updateData,
+      client
+    );
 
     return {
       success: true,
@@ -81,7 +96,10 @@ export const getCouponById = async (id) => {
   const coupon = await CouponsModel.findById(id);
 
   if (!coupon) {
-    throw AppError.notFound('Coupon', `No coupon found with id: ${id}`);
+    throw AppError.notFound(
+      'Coupon',
+      `No coupon found with id: ${id}`
+    );
   }
 
   return coupon;
@@ -89,7 +107,13 @@ export const getCouponById = async (id) => {
 
 // Fetch all coupons with cursor-based pagination and filters
 export const getAllCoupons = async (queryParams) => {
-  const { cursor, search, is_active: isActive, type, limit = 10 } = queryParams;
+  const {
+    cursor,
+    search,
+    is_active: isActive,
+    type,
+    limit = 10,
+  } = queryParams;
   const take = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100);
   const where = {};
 
@@ -126,9 +150,9 @@ export const getAllCoupons = async (queryParams) => {
   // Generate next cursor from the last record
   const nextCursor =
     hasNextPage && coupons.length > 0
-      ? Buffer.from(coupons[coupons.length - 1].id.toString()).toString(
-          'base64'
-        )
+      ? Buffer.from(
+          coupons[coupons.length - 1].id.toString()
+        ).toString('base64')
       : null;
 
   return {
@@ -141,4 +165,13 @@ export const getAllCoupons = async (queryParams) => {
       nextCursor,
     },
   };
+};
+
+// Shared Service
+export const findCouponByCode = async (code, client) => {
+  return await CouponsModel.findByCode(code, client);
+};
+
+export const findCouponById = async (id, client) => {
+  return await CouponsModel.findById(id, client);
 };

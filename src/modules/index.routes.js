@@ -10,6 +10,7 @@ import categoryRoutes from './categories/category.routes.js';
 import productRoutes from './products/product.routes.js';
 import uploadRoutes from './uploads/upload.routes.js';
 import couponRoutes from './coupons/coupons.routes.js';
+import cartRoutes from './cart/cart.routes.js';
 
 const routes = express.Router();
 
@@ -28,5 +29,6 @@ routes.use('/api/v1', categoryRoutes);
 routes.use('/api/v1/admin/uploads', uploadRoutes);
 routes.use('/api/v1', productRoutes);
 routes.use('/api/v1/admin/coupons', couponRoutes);
+routes.use('/api/v1/cart', cartRoutes);
 
 export default routes;
