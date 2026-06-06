@@ -196,6 +196,7 @@ model carts {
   @@index([session_id])
   @@index([coupon_id])
   @@index([status])
+  @@index([expires_at], map: "idx_carts_expires_at")
 }
 
 model cart_items {
