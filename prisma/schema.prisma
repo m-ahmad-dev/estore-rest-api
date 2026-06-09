@@ -216,44 +216,56 @@ model cart_items {
 
 model orders {
   id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_number    String        @unique @db.VarChar(50)
   customer_id     String?       @db.Uuid
-  guest_email     String?       @db.VarChar(255)
-  guest_name      String?       @db.VarChar(150)
-  guest_phone     String?       @db.VarChar(20)
   address_id      String?       @db.Uuid
+  guest_name      String?       @db.VarChar(150)
+  guest_email     String?       @db.VarChar(255)
+  guest_phone     String?       @db.VarChar(20)
   guest_address   Json?
   coupon_id       String?       @db.Uuid
-  status          String        @default("pending") @db.VarChar(50)
-  payment_method  String        @db.VarChar(50)
-  payment_status  String?       @default("unpaid") @db.VarChar(50)
+  status          OrderStatus   @default(PENDING)
+  payment_method  PaymentMethod
+  payment_status  PaymentStatus @default(UNPAID)
   subtotal        Decimal       @db.Decimal(10, 2)
-  discount_amount Decimal?      @default(0) @db.Decimal(10, 2)
-  shipping_cost   Decimal?      @default(0) @db.Decimal(10, 2)
+  discount_amount Decimal       @default(0) @db.Decimal(10, 2)
+  shipping_cost   Decimal       @default(0) @db.Decimal(10, 2)
   total_amount    Decimal       @db.Decimal(10, 2)
-  placed_at       DateTime?     @default(now()) @db.Timestamp(6)
-  items           order_items[]
-  address         addresses?    @relation(fields: [address_id], references: [id])
-  coupon          coupons?      @relation(fields: [coupon_id], references: [id])
-  customer        customers?    @relation(fields: [customer_id], references: [id])
-  payments        payments[]
-  reviews         reviews[]
-  shipments       shipments[]
+  placed_at       DateTime      @default(now()) @db.Timestamp(6)
+
+  customer customers? @relation(fields: [customer_id], references: [id])
+  address  addresses? @relation(fields: [address_id], references: [id])
+  coupon   coupons?   @relation(fields: [coupon_id], references: [id])
+
+  items     order_items[]
+  payments  payments[]
+  shipments shipments[]
+  reviews   reviews[]
 
   @@index([customer_id], map: "idx_orders_customer")
   @@index([status], map: "idx_orders_status")
+  @@index([placed_at], map: "idx_orders_placed_at")
+  @@index([payment_status], map: "idx_orders_payment_status")
+  @@index([customer_id, placed_at], map: "idx_orders_customer_placed_at")
+  @@index([status, placed_at], map: "idx_orders_status_placed_at")
 }
 
 model order_items {
-  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  order_id    String           @db.Uuid
-  variant_id  String           @db.Uuid
-  quantity    Int
-  unit_price  Decimal          @db.Decimal(10, 2)
-  total_price Decimal          @db.Decimal(10, 2)
-  order       orders           @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  variant     product_variants @relation(fields: [variant_id], references: [id])
+  id              String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id        String  @db.Uuid
+  variant_id      String? @db.Uuid
+  product_name    String  @db.VarChar(255)
+  sku             String? @db.VarChar(100)
+  variant_options Json?
+  quantity        Int
+  unit_price      Decimal @db.Decimal(10, 2)
+  total_price     Decimal @db.Decimal(10, 2)
+
+  order   orders            @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  variant product_variants? @relation(fields: [variant_id], references: [id])
 
   @@index([order_id], map: "idx_order_items_order")
+  @@index([variant_id], map: "idx_order_items_variant")
 }
 
 model addresses {
@@ -293,14 +305,18 @@ model coupons {
 }
 
 model payments {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  order_id       String    @db.Uuid
-  method         String    @db.VarChar(50)
-  status         String    @default("pending") @db.VarChar(50)
-  amount         Decimal   @db.Decimal(10, 2)
-  transaction_id String?   @unique @db.VarChar(255)
-  paid_at        DateTime? @db.Timestamp(6)
-  order          orders    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id       String        @db.Uuid
+  method         PaymentMethod
+  status         PaymentStatus @default(UNPAID)
+  amount         Decimal       @db.Decimal(10, 2)
+  transaction_id String?       @unique @db.VarChar(255)
+  paid_at        DateTime?     @db.Timestamp(6)
+
+  order orders @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([order_id], map: "idx_payments_order")
+  @@index([status], map: "idx_payments_status")
 }
 
 model reviews {
@@ -323,14 +339,19 @@ model reviews {
 }
 
 model shipments {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  order_id        String    @db.Uuid
-  carrier         String?   @db.VarChar(100)
-  tracking_number String?   @db.VarChar(255)
-  status          String?   @default("processing") @db.VarChar(50)
-  shipped_at      DateTime? @db.Timestamp(6)
-  delivered_at    DateTime? @db.Timestamp(6)
-  order           orders    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id        String         @db.Uuid
+  carrier         String?        @db.VarChar(100)
+  tracking_number String?        @db.VarChar(255)
+  status          ShipmentStatus @default(PROCESSING)
+  shipped_at      DateTime?      @db.Timestamp(6)
+  delivered_at    DateTime?      @db.Timestamp(6)
+
+  order orders @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([order_id], map: "idx_shipments_order")
+  @@index([status], map: "idx_shipments_status")
+  @@index([tracking_number], map: "idx_shipments_tracking")
 }
 
 model wishlists {
@@ -366,4 +387,33 @@ enum cart_status {
   ACTIVE
   ABANDONED
   CONVERTED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH_ON_DELIVERY
+  BANK_TRANSFER
+  JAZZCASH
+  EASYPAISA
+  CARD
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+}
+
+enum ShipmentStatus {
+  PROCESSING
+  SHIPPED
+  DELIVERED
 }
