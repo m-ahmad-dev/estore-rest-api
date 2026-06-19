@@ -17,7 +17,10 @@ const CART_ITEM_SELECT = {
   variant: {
     select: {
       id: true,
+      product_id: true,
+      attributes: true,
       sku: true,
+      weight: true,
       price: true,
       stock_quantity: true,
       reserved_quantity: true,

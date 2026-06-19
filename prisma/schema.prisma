@@ -163,6 +163,7 @@ model product_variants {
   sku               String        @unique @db.VarChar(100)
   attributes        Json          @default("{}")
   attributes_hash   String        @db.VarChar(64)
+  weight            Decimal       @default(0.50) @db.Decimal(10, 2)
   price             Decimal       @db.Decimal(10, 2)
   stock_quantity    Int           @default(0)
   reserved_quantity Int           @default(0)
@@ -269,16 +270,19 @@ model order_items {
 }
 
 model addresses {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  customer_id String    @db.Uuid
-  label       String?   @db.VarChar(50)
-  street      String
-  city        String    @db.VarChar(100)
-  province    String?   @db.VarChar(100)
-  postal_code String?   @db.VarChar(20)
-  is_default  Boolean?  @default(false)
-  customer    customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
-  orders      orders[]
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customer_id   String    @db.Uuid
+  label         String?   @db.VarChar(50)
+  street        String
+  city          String    @db.VarChar(100)
+  province      String    @db.VarChar(100)
+  province_code String    @db.VarChar(2)
+  country       String    @db.VarChar(100)
+  country_code  String    @db.Char(2)
+  postal_code   String?   @db.VarChar(20)
+  is_default    Boolean?  @default(false)
+  customer      customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  orders        orders[]
 }
 
 model coupons {
@@ -400,9 +404,6 @@ enum OrderStatus {
 
 enum PaymentMethod {
   CASH_ON_DELIVERY
-  BANK_TRANSFER
-  JAZZCASH
-  EASYPAISA
   CARD
 }
 

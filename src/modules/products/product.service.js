@@ -22,7 +22,11 @@ export const createProductService = async (payload) => {
   const { variants, images, ...productFields } = payload;
 
   return await executeTransaction(async (client) => {
-    const slug = await validateUniqueSlug(productFields.name, null, client);
+    const slug = await validateUniqueSlug(
+      productFields.name,
+      null,
+      client
+    );
     const product = await ProductModel.create(
       { ...productFields, slug },
       client
@@ -49,7 +53,10 @@ export const createProductService = async (payload) => {
   });
 };
 
-export const updateProductService = async (productId, updatePayload) => {
+export const updateProductService = async (
+  productId,
+  updatePayload
+) => {
   return await executeTransaction(async (client) => {
     const product = await ProductModel.findById(productId);
     if (!product) throw AppError.notFound('Product');
@@ -64,7 +71,12 @@ export const updateProductService = async (productId, updatePayload) => {
     }
 
     if (category_id !== undefined) {
-      await validateCategoryChange(productId, category_id, product, client);
+      await validateCategoryChange(
+        productId,
+        category_id,
+        product,
+        client
+      );
       updateData.category_id = category_id;
     }
 
@@ -88,7 +100,10 @@ export const updateProductService = async (productId, updatePayload) => {
 
 export const deleteProductService = async (productId) => {
   return await executeTransaction(async (client) => {
-    const { exists, deleted } = await ProductModel.exists(productId, client);
+    const { exists, deleted } = await ProductModel.exists(
+      productId,
+      client
+    );
     if (!exists || deleted) throw AppError.notFound('Product');
 
     await ProductModel.softDelete(productId, client);
@@ -103,7 +118,10 @@ export const deleteProductService = async (productId) => {
 
 export const hardDeleteProductService = async (productId) => {
   return await executeTransaction(async (client) => {
-    const { exists, deleted } = await ProductModel.exists(productId, client);
+    const { exists, deleted } = await ProductModel.exists(
+      productId,
+      client
+    );
     if (!exists || deleted) throw AppError.notFound('Product');
 
     await bulkDeleteVariants(productId, client);
@@ -144,7 +162,10 @@ export const getProductBySlugService = async (slug) => {
   return formatProductDetail(product);
 };
 
-export const getAllProductsService = async (query = {}, isAdmin = false) => {
+export const getAllProductsService = async (
+  query = {},
+  isAdmin = false
+) => {
   const {
     q,
     category,
@@ -184,14 +205,18 @@ export const getAllProductsService = async (query = {}, isAdmin = false) => {
 
   // Handle pagination
   const hasNextPage = rawProducts.length > limit;
-  const productsData = hasNextPage ? rawProducts.slice(0, limit) : rawProducts;
+  const productsData = hasNextPage
+    ? rawProducts.slice(0, limit)
+    : rawProducts;
 
   const nextCursor = hasNextPage
     ? productsData[productsData.length - 1].id
     : null;
 
   // Format products based on user role
-  const formatter = isAdmin ? formatProductForAdmin : formatProductForPublic;
+  const formatter = isAdmin
+    ? formatProductForAdmin
+    : formatProductForPublic;
   const products = productsData.map(formatter);
 
   return {
@@ -209,6 +234,10 @@ export const getAllProductsService = async (query = {}, isAdmin = false) => {
 // Shared Services:
 export const findProductById = async (productId, client) => {
   return await ProductModel.findById(productId, client);
+};
+
+export const findManyProductsByIds = async (productIds, client) => {
+  return await ProductModel.findManyByIds(productIds, client);
 };
 
 export const checkProductExist = async (productId, client) => {

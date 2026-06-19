@@ -21,7 +21,10 @@ export const createVariantService = async (
 ) => {
   const product = await findProductById(productId, client);
   if (!product || product.deleted_at !== null) {
-    throw AppError.notFound('Product', 'Product not exist or has been deleted');
+    throw AppError.notFound(
+      'Product',
+      'Product not exist or has been deleted'
+    );
   }
 
   const effectiveCategoryId = categoryId ?? product.category_id;
@@ -44,11 +47,18 @@ export const createVariantService = async (
 };
 
 // Update variant (only price and SKU - attributes are immutable after creation)
-export const updateVariantService = async (productId, variantId, body) => {
+export const updateVariantService = async (
+  productId,
+  variantId,
+  body
+) => {
   return executeTransaction(async (client) => {
     await validateProductExists(productId, client);
 
-    const variant = await ProdVariantsModel.findById(variantId, client);
+    const variant = await ProdVariantsModel.findById(
+      variantId,
+      client
+    );
     if (!variant || variant.deleted_at !== null) {
       throw AppError.notFound('Variant');
     }
@@ -59,10 +69,11 @@ export const updateVariantService = async (productId, variantId, body) => {
       );
     }
 
-    const { price, sku } = body;
+    const { price, sku, weight } = body;
     const updates = {
       ...(price !== undefined && { price }),
       ...(sku && { sku }),
+      ...(weight && { weight }),
     };
 
     if (Object.keys(updates).length === 0) {
@@ -71,7 +82,10 @@ export const updateVariantService = async (productId, variantId, body) => {
 
     // Ensure SKU uniqueness if changed
     if (sku && sku !== variant.sku) {
-      const existingSKU = await ProdVariantsModel.findBySKU(sku, client);
+      const existingSKU = await ProdVariantsModel.findBySKU(
+        sku,
+        client
+      );
       if (existingSKU) {
         throw AppError.badRequest(
           'SKU must be unique',
@@ -100,7 +114,10 @@ export const handleSoftDeleteOrRestore = async (
   return executeTransaction(async (client) => {
     await validateProductExists(productId, client);
 
-    const variant = await ProdVariantsModel.findById(variantId, client);
+    const variant = await ProdVariantsModel.findById(
+      variantId,
+      client
+    );
     if (!variant) throw AppError.notFound('Variant');
 
     if (deletedAt && variant.deleted_at !== null) {
@@ -135,12 +152,15 @@ export const handleSoftDeleteOrRestore = async (
 export const updateVariantStockService = async (
   productId,
   variantId,
-  operation
+  body
 ) => {
   return executeTransaction(async (client) => {
     await validateProductExists(productId, client);
 
-    const variant = await ProdVariantsModel.findById(variantId, client);
+    const variant = await ProdVariantsModel.findById(
+      variantId,
+      client
+    );
 
     if (!variant || variant.deleted_at !== null) {
       throw AppError.notFound(
@@ -157,7 +177,7 @@ export const updateVariantStockService = async (
 
     const updatedVariant = await applyStockOperation(
       variant,
-      operation,
+      body,
       client
     );
 
@@ -166,7 +186,10 @@ export const updateVariantStockService = async (
 };
 
 // Get all variants of a product
-export const getProductVariantsService = async (productId, options = {}) => {
+export const getProductVariantsService = async (
+  productId,
+  options = {}
+) => {
   const { isAdmin = false, includeDeleted = false } = options;
 
   // Security: Public users cannot request deleted variants
@@ -190,7 +213,11 @@ export const getProductVariantsService = async (productId, options = {}) => {
 };
 
 // Get single variant by ID
-export const getVariantService = async (productId, variantId, options = {}) => {
+export const getVariantService = async (
+  productId,
+  variantId,
+  options = {}
+) => {
   const { isAdmin = false } = options;
 
   await validateProductExists(productId);
@@ -202,20 +229,30 @@ export const getVariantService = async (productId, variantId, options = {}) => {
     throw AppError.notFound('Variant');
 
   if (variant.product_id !== productId) {
-    throw AppError.badRequest('Variant does not belong to this product');
+    throw AppError.badRequest(
+      'Variant does not belong to this product'
+    );
   }
 
-  return isAdmin ? formatAdminVariant(variant) : formatPublicVariant(variant);
+  return isAdmin
+    ? formatAdminVariant(variant)
+    : formatPublicVariant(variant);
 };
 
 // ======== SHARED UTILITIES ========
 
 // Delete all variants of a product (used when deleting product)
-export const bulkDeleteVariants = async (productId, client = prisma) => {
-  return await ProdVariantsModel.deleteAllByProduct(productId, client);
+export const bulkDeleteVariants = async (
+  productId,
+  client = prisma
+) => {
+  return await ProdVariantsModel.deleteAllByProduct(
+    productId,
+    client
+  );
 };
 
-// ========== STOCK OPERATIONS =========
+// ========= STOCK OPERATIONS =========
 
 const computeStockDelta = {
   'stock.add': ({ stock_quantity }, quantity) => ({
@@ -229,17 +266,24 @@ const computeStockDelta = {
     return { stock_quantity: stock_quantity - quantity };
   },
 
-  'stock.reserve': ({ stock_quantity, reserved_quantity }, quantity) => {
+  'stock.reserve': (
+    { stock_quantity, reserved_quantity },
+    quantity
+  ) => {
     const available = stock_quantity - (reserved_quantity || 0);
     if (available < quantity) {
-      throw AppError.badRequest('Insufficient available stock to reserve');
+      throw AppError.badRequest(
+        'Insufficient available stock to reserve'
+      );
     }
     return { reserved_quantity: (reserved_quantity || 0) + quantity };
   },
 
   'reserved_stock.release': ({ reserved_quantity }, quantity) => {
     if ((reserved_quantity || 0) < quantity) {
-      throw AppError.badRequest('Insufficient reserved stock to release');
+      throw AppError.badRequest(
+        'Insufficient reserved stock to release'
+      );
     }
     return { reserved_quantity: (reserved_quantity || 0) - quantity };
   },
@@ -249,7 +293,9 @@ const computeStockDelta = {
     quantity
   ) => {
     if ((reserved_quantity || 0) < quantity) {
-      throw AppError.badRequest('Insufficient reserved stock to confirm');
+      throw AppError.badRequest(
+        'Insufficient reserved stock to confirm'
+      );
     }
     if (stock_quantity < quantity) {
       throw AppError.badRequest('Insufficient stock to confirm');
@@ -263,12 +309,13 @@ const computeStockDelta = {
 };
 
 // Apply stock operation and persist changes
-export const applyStockOperation = async (variant, operation, client) => {
+export const applyStockOperation = async (variant, body, client) => {
   const { id: variantId, product_id: productId } = variant;
   let updateData;
 
-  if (operation.operation === 'stock.set') {
-    const { stock_quantity, reserved_quantity, reorder_level } = operation;
+  if (body.operation === 'stock.set') {
+    const { stock_quantity, reserved_quantity, reorder_level } = body;
+
     updateData = Object.fromEntries(
       Object.entries({
         stock_quantity,
@@ -277,11 +324,11 @@ export const applyStockOperation = async (variant, operation, client) => {
       }).filter(([, value]) => value !== undefined)
     );
   } else {
-    const compute = computeStockDelta[operation.operation];
+    const compute = computeStockDelta[body.operation];
     if (!compute) {
       throw AppError.badRequest('Invalid stock operation');
     }
-    updateData = compute(variant, operation.quantity);
+    updateData = compute(variant, body.quantity);
   }
 
   return await ProdVariantsModel.update(
@@ -309,4 +356,28 @@ const formatResponse = (variant) => ({
 export const findVariantById = async (variantId, client) => {
   const variant = await ProdVariantsModel.findById(variantId, client);
   return variant;
+};
+
+export const decreaseProductStockAndReverved = async (
+  variantId,
+  quantity,
+  client
+) => {
+  return await ProdVariantsModel.decrementStockAndReservation(
+    variantId,
+    quantity,
+    client
+  );
+};
+
+export const releaseProductReservation = async (
+  variantId,
+  quantity,
+  client
+) => {
+  return await ProdVariantsModel.releaseReservedStock(
+    variantId,
+    quantity,
+    client
+  );
 };

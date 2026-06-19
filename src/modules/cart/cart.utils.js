@@ -45,6 +45,16 @@ export const calculateSubtotal = (items = []) => {
   }, 0);
 };
 
+export const calculateTotalWeight = (items = []) => {
+  if (!Array.isArray(items)) return 0;
+
+  return items.reduce((total, item) => {
+    const weight = item?.variant?.weight ?? 0;
+    const quantity = item?.quantity ?? 0;
+    return total + weight * quantity;
+  }, 0);
+};
+
 /**
  * Calculates discount amount based on coupon type.
  * Caps PERCENTAGE discounts at max_discount if defined.
@@ -83,7 +93,7 @@ export const calculateDiscount = (subtotal, coupon) => {
 export const buildPricingSummary = (
   subtotal,
   discount,
-  shipping = 0
+  shipping
 ) => ({
   subtotal: parseFloat(subtotal.toFixed(2)),
   discount,

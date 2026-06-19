@@ -1,4 +1,4 @@
-import "dotenv/config";
+import 'dotenv/config';
 
 const env = {
   // Application configuration:
@@ -36,3 +36,21 @@ const env = {
 };
 
 export default env;
+
+// Shipping configuration:
+export const shippingConfig = {
+  provider: process.env.SHIPPING_PROVIDER || 'MOCK',
+  shippo: {
+    apiToken: process.env.SHIPPO_API_TOKEN,
+    senderAddress: {
+      name: process.env.SENDER_NAME,
+      street1: process.env.SENDER_STREET,
+      city: process.env.SENDER_CITY,
+      state: process.env.SENDER_STATE,
+      zip: process.env.SENDER_POSTAL_CODE,
+      country: process.env.SENDER_COUNTRY,
+      phone: process.env.SENDER_PHONE,
+      email: process.env.SENDER_EMAIL,
+    },
+  },
+};

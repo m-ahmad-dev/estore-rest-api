@@ -7,6 +7,8 @@ import {
 } from '../coupons/coupons.service.js';
 import AppError from '../../core/utils/error.utils.js';
 import * as cartUtils from './cart.utils.js';
+import { findManyProductsByIds } from '../products/product.service.js';
+import { createShippoShipment } from '../shipments/shippo.service.js';
 
 const resolveCartUser = (user) => {
   const { customer_id, session_id } = user;
@@ -309,7 +311,7 @@ export const clearCart = async (user) => {
 
     return {
       success: true,
-      message: 'Cart cleared',
+      message: 'Cart cleared sucessfully',
     };
   });
 };
@@ -340,9 +342,6 @@ export const applyCoupon = async (user, code) => {
 
     await CartModel.update(cart.id, { coupon_id: coupon.id }, client);
 
-    const discount = cartUtils.calculateDiscount(subtotal, coupon);
-    const pricing = cartUtils.buildPricingSummary(subtotal, discount);
-
     return {
       success: true,
       message: 'Coupon applied successfully',
@@ -352,7 +351,6 @@ export const applyCoupon = async (user, code) => {
         type: coupon.type,
         value: Number(coupon.value),
       },
-      pricing,
     };
   });
 };
@@ -442,42 +440,81 @@ export const getCart = async (user) => {
  * Intended for internal use by checkout / order creation services.
  * @returns {{ cart, items, subtotal, discount, total, coupon } | null}
  */
-export const resolveCartForCheckout = async (user, client) => {
+export const resolveCartForCheckout = async (
+  user,
+  checkoutContext,
+  client
+) => {
   const { customer_id, session_id } = resolveCartUser(user);
-
   const cart = await requireActiveCart(
     client,
     customer_id,
     session_id
   );
-  const items = await CartItemModel.findByCart(cart.id, client);
 
+  let items = await CartItemModel.findByCart(cart.id, client);
   if (items.length === 0) {
     throw AppError.badRequest(
       'Cart is empty',
-      'Add items before placing an order'
+      'Please add items before placing an order.'
     );
   }
 
+  // Enrich and validate items (product lookup moved here)
+  const productIds = [
+    ...new Set(
+      items.map((item) => item.variant?.product_id).filter(Boolean)
+    ),
+  ];
+  const products = await findManyProductsByIds(productIds, client);
+  const productMap = new Map(products.map((p) => [p.id, p]));
+
+  items = items.map((item) => {
+    const product = productMap.get(item.variant.product_id);
+    if (!product || product.deleted_at || !product.is_active) {
+      throw AppError.badRequest(
+        'Product unavailable',
+        `Product for variant ${item.variant.sku} is no longer available.`
+      );
+    }
+    if (cartUtils.getAvailableStock(item.variant) < item.quantity) {
+      throw AppError.badRequest(
+        'Insufficient stock',
+        `Insufficient stock for variant '${item.variant.sku}'.`
+      );
+    }
+    return {
+      ...item,
+      product_name: product.name, // Enrich for order items
+    };
+  });
+
   const subtotal = cartUtils.calculateSubtotal(items);
+  const totalWeight = cartUtils.calculateTotalWeight(items);
 
   let discount = 0;
-  let coupon = null;
-
   if (cart.coupon_id) {
     const foundCoupon = await findCouponById(cart.coupon_id, client);
     if (isCouponStillValid(foundCoupon, subtotal)) {
-      coupon = foundCoupon;
-      discount = cartUtils.calculateDiscount(subtotal, coupon);
+      discount = cartUtils.calculateDiscount(subtotal, foundCoupon);
     }
   }
 
-  const pricing = cartUtils.buildPricingSummary(subtotal, discount);
+  const shippingRecord = await createShippoShipment({
+    ...checkoutContext,
+    totalWeight,
+  });
+
+  const pricing = cartUtils.buildPricingSummary(
+    subtotal,
+    discount,
+    shippingRecord.fee
+  );
 
   return {
     cart,
     items,
-    coupon,
+    shippingRecord,
     ...pricing,
   };
 };

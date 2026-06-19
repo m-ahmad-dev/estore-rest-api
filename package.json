@@ -1,7 +1,7 @@
 {
   "name": "store-api",
   "version": "1.0.0",
-  "description": "",
+  "description": "E-commerce REST API built with Node.js, Express, and PostgreSQL using Prisma ORM.",
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -18,6 +18,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1044.0",
     "@aws-sdk/s3-request-presigner": "^3.1044.0",
+    "@koshmoney/countries": "^1.0.1-beta.1",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "bcrypt": "^6.0.0",
@@ -34,7 +35,8 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "pg": "^8.20.0",
-    "slugify": "^1.6.9"
+    "slugify": "^1.6.9",
+    "stripe": "^22.2.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
