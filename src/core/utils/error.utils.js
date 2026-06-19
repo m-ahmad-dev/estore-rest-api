@@ -48,10 +48,14 @@ class AppError extends Error {
   }
 
   static routeNotFound(url = null) {
-    return new AppError(url ? `Cannot find ${url}` : 'Route not found', 404, {
-      errorCode: 'ROUTE_NOT_FOUND',
-      details: url ? { url } : null,
-    });
+    return new AppError(
+      url ? `Cannot find ${url}` : 'Route not found',
+      404,
+      {
+        errorCode: 'ROUTE_NOT_FOUND',
+        details: url ? { url } : null,
+      }
+    );
   }
 
   // 409
@@ -70,10 +74,11 @@ class AppError extends Error {
   }
 
   // 500
-  static internal(message = 'Internal server error') {
+  static internal(message = 'Internal server error', details = null) {
     return new AppError(message, 500, {
       errorCode: 'INTERNAL_ERROR',
       isOperational: false,
+      details,
     });
   }
 

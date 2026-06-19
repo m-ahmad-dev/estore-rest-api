@@ -5,7 +5,10 @@ export const createVariants = asyncWrapper(async (req, res) => {
   const { productId } = req.params;
   const { variants } = req.body;
 
-  const result = await variantService.createVariants(productId, variants);
+  const result = await variantService.createVariantService(
+    productId,
+    variants
+  );
 
   res.status(201).json({
     success: true,
@@ -16,7 +19,7 @@ export const createVariants = asyncWrapper(async (req, res) => {
 
 export const updateVariant = asyncWrapper(async (req, res) => {
   const { productId, variantId } = req.params;
-  const result = await variantService.updateVariant(
+  const result = await variantService.updateVariantService(
     productId,
     variantId,
     req.body
@@ -27,21 +30,27 @@ export const updateVariant = asyncWrapper(async (req, res) => {
 
 export const deleteVariant = asyncWrapper(async (req, res) => {
   const { productId, variantId } = req.params;
-  const result = await variantService.softDeleteVariant(productId, variantId);
+  const result = await variantService.handleSoftDeleteOrRestore(
+    productId,
+    variantId
+  );
 
   res.status(200).json(result);
 });
 
 export const restoreVariant = asyncWrapper(async (req, res) => {
   const { productId, variantId } = req.params;
-  const result = await variantService.restoreVariant(productId, variantId);
+  const result = await variantService.handleSoftDeleteOrRestore(
+    productId,
+    variantId
+  );
 
   res.status(200).json(result);
 });
 
 export const updateVariantStock = asyncWrapper(async (req, res) => {
   const { productId, variantId } = req.params;
-  const result = await variantService.updateVariantStock(
+  const result = await variantService.updateVariantStockService(
     productId,
     variantId,
     req.body
@@ -54,10 +63,13 @@ export const getProductVariants = asyncWrapper(async (req, res) => {
   const { productId } = req.params;
   const includeDeleted = req.query.include_deleted === 'true';
 
-  const variants = await variantService.getProductVariants(productId, {
-    isAdmin: false,
-    includeDeleted,
-  });
+  const variants = await variantService.getProductVariantsService(
+    productId,
+    {
+      isAdmin: false,
+      includeDeleted,
+    }
+  );
 
   res.status(200).json({
     success: true,
@@ -66,27 +78,36 @@ export const getProductVariants = asyncWrapper(async (req, res) => {
   });
 });
 
-export const getProductVariantsAdmin = asyncWrapper(async (req, res) => {
-  const { productId } = req.params;
-  const includeDeleted = req.query.include_deleted === 'true';
+export const getProductVariantsAdmin = asyncWrapper(
+  async (req, res) => {
+    const { productId } = req.params;
+    const includeDeleted = req.query.include_deleted === 'true';
 
-  const variants = await variantService.getProductVariants(productId, {
-    isAdmin: true,
-    includeDeleted,
-  });
+    const variants = await variantService.getProductVariantsService(
+      productId,
+      {
+        isAdmin: true,
+        includeDeleted,
+      }
+    );
 
-  res.status(200).json({
-    success: true,
-    message: 'Product variants retrieved successfully',
-    data: variants,
-  });
-});
+    res.status(200).json({
+      success: true,
+      message: 'Product variants retrieved successfully',
+      data: variants,
+    });
+  }
+);
 
 export const getVariant = asyncWrapper(async (req, res) => {
   const { productId, variantId } = req.params;
-  const variant = await variantService.getVariantById(productId, variantId, {
-    isAdmin: false,
-  });
+  const variant = await variantService.getVariantService(
+    productId,
+    variantId,
+    {
+      isAdmin: false,
+    }
+  );
 
   res.status(200).json({
     success: true,
@@ -97,9 +118,13 @@ export const getVariant = asyncWrapper(async (req, res) => {
 
 export const getVariantAdmin = asyncWrapper(async (req, res) => {
   const { productId, variantId } = req.params;
-  const variant = await variantService.getVariantById(productId, variantId, {
-    isAdmin: true,
-  });
+  const variant = await variantService.getVariantService(
+    productId,
+    variantId,
+    {
+      isAdmin: true,
+    }
+  );
 
   res.status(200).json({
     success: true,

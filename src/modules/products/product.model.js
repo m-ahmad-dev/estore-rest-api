@@ -129,6 +129,13 @@ const ProductModel = {
     });
   },
 
+  findManyByIds: async (productIds, db = prisma) => {
+    return await db.products.findMany({
+      where: { id: { in: productIds }, deleted_at: null },
+      select: PRODUCT_BASE_SELECT,
+    });
+  },
+
   findMany: async (where, orderBy, limit, cursor, db = prisma) => {
     return await db.products.findMany({
       where,
@@ -149,7 +156,12 @@ const ProductModel = {
         },
         images: {
           where: { is_primary: true },
-          select: { id: true, key: true, url: true, is_primary: true },
+          select: {
+            id: true,
+            key: true,
+            url: true,
+            is_primary: true,
+          },
           orderBy: { sort_order: 'asc' },
           take: 1,
         },

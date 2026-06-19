@@ -4,6 +4,7 @@ const VARIANT_SELECT_FIELDS = {
   id: true,
   product_id: true,
   sku: true,
+  weight: true,
   price: true,
   attributes: true,
   stock_quantity: true,
@@ -45,7 +46,11 @@ const VariantModel = {
       select: VARIANT_SELECT_FIELDS,
     }),
 
-  findByProductId: async (productId, includeDeleted = false, db = prisma) =>
+  findByProductId: async (
+    productId,
+    includeDeleted = false,
+    db = prisma
+  ) =>
     db.product_variants.findMany({
       where: {
         product_id: productId,
@@ -75,15 +80,38 @@ const VariantModel = {
     }),
 
   deleteAllByProduct: async (productId, db = prisma) =>
-    db.product_variants.deleteMany({ where: { product_id: productId } }),
+    db.product_variants.deleteMany({
+      where: { product_id: productId },
+    }),
 
   exists: async (variantId, db = prisma) => {
-    const count = await db.product_variants.count({ where: { id: variantId } });
+    const count = await db.product_variants.count({
+      where: { id: variantId },
+    });
     return count > 0;
   },
 
   countByProduct: async (productId, db = prisma) =>
     db.product_variants.count({ where: { product_id: productId } }),
+
+  decrementStockAndReservation: async (id, quantity, db = prisma) => {
+    return db.product_variants.update({
+      where: { id },
+      data: {
+        reserved_quantity: { decrement: quantity },
+        stock_quantity: { decrement: quantity },
+      },
+    });
+  },
+
+  releaseReservedStock: async (id, quantity, db = prisma) => {
+    return db.product_variants.update({
+      where: { id },
+      data: {
+        reserved_quantity: { decrement: quantity },
+      },
+    });
+  },
 };
 
 export default VariantModel;

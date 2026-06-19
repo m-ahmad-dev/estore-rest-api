@@ -70,7 +70,9 @@ export async function getEffectiveAttributeRules(categoryId, client) {
 
   const rulesMap = new Map();
   for (const cat of lineage) {
-    const rules = Array.isArray(cat.attribute_rules) ? cat.attribute_rules : [];
+    const rules = Array.isArray(cat.attribute_rules)
+      ? cat.attribute_rules
+      : [];
     for (const rule of rules) {
       if (rule?.name) {
         rulesMap.set(rule.name, { ...rule });
@@ -98,10 +100,13 @@ export function validateAttributesWithRules(attributes, rules) {
 
   for (const key of Object.keys(attributes)) {
     if (!allowed.has(key)) {
-      throw AppError.badRequest(`Unknown attribute "${key}" not allowed`, {
-        errorCode: ProductErrorCode.INVALID_ATTRIBUTES,
-        allowed: Array.from(allowed),
-      });
+      throw AppError.badRequest(
+        `Unknown attribute "${key}" not allowed`,
+        {
+          errorCode: ProductErrorCode.INVALID_ATTRIBUTES,
+          allowed: Array.from(allowed),
+        }
+      );
     }
   }
 
@@ -115,10 +120,13 @@ export function validateAttributesWithRules(attributes, rules) {
       (typeof value !== 'string' || value.trim() !== '');
 
     if (rule.required && !hasValue) {
-      throw AppError.badRequest(`Missing required attribute "${rule.name}"`, {
-        errorCode: ProductErrorCode.INVALID_ATTRIBUTES,
-        attribute: rule.name,
-      });
+      throw AppError.badRequest(
+        `Missing required attribute "${rule.name}"`,
+        {
+          errorCode: ProductErrorCode.INVALID_ATTRIBUTES,
+          attribute: rule.name,
+        }
+      );
     }
 
     if (!hasValue) continue;
@@ -146,12 +154,19 @@ function validateVariantBusinessRules(variant) {
   if ((variant.stock_quantity ?? 0) < 0) {
     throw AppError.badRequest('Stock quantity cannot be negative');
   }
-  if ((variant.reserved_quantity ?? 0) > (variant.stock_quantity ?? 0)) {
-    throw AppError.badRequest('Reserved quantity cannot exceed stock quantity');
+  if (
+    (variant.reserved_quantity ?? 0) > (variant.stock_quantity ?? 0)
+  ) {
+    throw AppError.badRequest(
+      'Reserved quantity cannot exceed stock quantity'
+    );
   }
 }
 
-export const validateUniqueVariantAttributes = (variants, helpers) => {
+export const validateUniqueVariantAttributes = (
+  variants,
+  helpers
+) => {
   const seen = new Set();
 
   for (const variant of variants) {
@@ -175,6 +190,7 @@ export const formatAdminVariant = (variant) => ({
   id: variant.id,
   product_id: variant.product_id,
   sku: variant.sku,
+  weight: variant.weight,
   price: variant.price,
   attributes: variant.attributes,
   stock_quantity: variant.stock_quantity,
@@ -187,17 +203,25 @@ export const formatAdminVariant = (variant) => ({
 export const formatPublicVariant = (variant) => ({
   id: variant.id,
   sku: variant.sku,
+  weight: variant.weight,
   price: variant.price,
   attributes: variant.attributes,
-  available_quantity: variant.stock_quantity - (variant.reserved_quantity || 0),
+  available_quantity:
+    variant.stock_quantity - (variant.reserved_quantity || 0),
   in_stock:
-    (variant.stock_quantity || 0) - (variant.reserved_quantity || 0) > 0,
+    (variant.stock_quantity || 0) - (variant.reserved_quantity || 0) >
+    0,
 });
 
 //* ====== Helper Services ======
 
 // Prepare and validate variants for creation/update:
-export async function prepareVariants(productId, variants, categoryId, client) {
+export async function prepareVariants(
+  productId,
+  variants,
+  categoryId,
+  client
+) {
   if (!Array.isArray(variants) || variants.length === 0) return [];
 
   const rules = await getEffectiveAttributeRules(categoryId, client);
@@ -213,9 +237,12 @@ export async function prepareVariants(productId, variants, categoryId, client) {
     const hash = generateAttributesHash(normalized);
 
     if (seenHashes.has(hash)) {
-      throw AppError.conflict('Duplicate variant attributes detected', {
-        errorCode: ProductErrorCode.DUPLICATE_VARIANT,
-      });
+      throw AppError.conflict(
+        'Duplicate variant attributes detected',
+        {
+          errorCode: ProductErrorCode.DUPLICATE_VARIANT,
+        }
+      );
     }
     seenHashes.add(hash);
 
@@ -240,6 +267,7 @@ export async function prepareVariants(productId, variants, categoryId, client) {
       sku,
       attributes: normalized,
       attributes_hash: hash,
+      weight: variant.weight ?? 0.5,
       price: variant.price ?? 0,
       stock_quantity: variant.stock_quantity ?? 0,
       reserved_quantity: variant.reserved_quantity ?? 0,

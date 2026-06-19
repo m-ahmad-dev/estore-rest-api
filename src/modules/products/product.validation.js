@@ -28,7 +28,10 @@ export const attributesSchema = Joi.object()
       Joi.number(),
       Joi.boolean(),
       Joi.array().items(
-        Joi.alternatives().try(Joi.string().trim().max(255), Joi.number())
+        Joi.alternatives().try(
+          Joi.string().trim().max(255),
+          Joi.number()
+        )
       )
     )
   )
@@ -68,6 +71,7 @@ const imagesArraySchema = Joi.array()
 export const variantSchema = Joi.object({
   attributes: attributesSchema,
   sku: Joi.string().trim().max(100).optional(),
+  weight: Joi.number().precision(2).min(0).required(),
   price: fields.price.required(),
   stock_quantity: fields.nonNegativeInt.required(),
   reserved_quantity: fields.nonNegativeInt.default(0),
@@ -96,9 +100,11 @@ export const createProductSchema = Joi.object({
   base_price: fields.price.required(),
   is_active: Joi.boolean().default(true),
   variants: variantsArraySchema,
-  images: imagesArraySchema.custom(validateExactlyOnePrimary).messages({
-    'any.invalid': 'Exactly one primary image is required',
-  }),
+  images: imagesArraySchema
+    .custom(validateExactlyOnePrimary)
+    .messages({
+      'any.invalid': 'Exactly one primary image is required',
+    }),
 })
   .required()
   .unknown(false)
@@ -132,6 +138,7 @@ export const createVariantsSchema = Joi.object({
 // Update variant
 export const updateVariantSchema = Joi.object({
   sku: Joi.string().trim().max(100),
+  weight: Joi.number().precision(2).min(0),
   price: fields.price,
 })
   .min(1)
@@ -202,10 +209,15 @@ export const addImagesSchema = Joi.object({
 
 // Reorder images
 export const reorderProductImagesSchema = Joi.object({
-  imageIds: Joi.array().items(fields.uuid).min(1).unique().required().messages({
-    'array.unique': 'Image IDs must be unique',
-    'array.min': 'At least one image ID is required',
-  }),
+  imageIds: Joi.array()
+    .items(fields.uuid)
+    .min(1)
+    .unique()
+    .required()
+    .messages({
+      'array.unique': 'Image IDs must be unique',
+      'array.min': 'At least one image ID is required',
+    }),
 })
   .required()
   .unknown(false);
@@ -228,7 +240,11 @@ const baseProductsQuerySchema = Joi.object({
     .optional()
     .lowercase()
     .trim(),
-  order: Joi.string().valid('asc', 'desc').optional().lowercase().trim(),
+  order: Joi.string()
+    .valid('asc', 'desc')
+    .optional()
+    .lowercase()
+    .trim(),
   limit: Joi.number().integer().min(1).optional().default(10),
   cursor: Joi.string()
     .allow('')
@@ -246,13 +262,25 @@ const baseProductsQuerySchema = Joi.object({
   });
 
 // Public schema just reuses the base with a stricter limit
-export const publicProductsQuerySchema = baseProductsQuerySchema.keys({
-  limit: Joi.number().integer().min(1).max(50).optional().default(10),
-});
+export const publicProductsQuerySchema = baseProductsQuerySchema.keys(
+  {
+    limit: Joi.number()
+      .integer()
+      .min(1)
+      .max(50)
+      .optional()
+      .default(10),
+  }
+);
 
 // Admin schema extends the base with extra fields
 export const adminProductsQuerySchema = baseProductsQuerySchema.keys({
-  limit: Joi.number().integer().min(1).max(100).optional().default(10),
+  limit: Joi.number()
+    .integer()
+    .min(1)
+    .max(100)
+    .optional()
+    .default(10),
   include_deleted: Joi.string()
     .valid('true', 'false')
     .optional()

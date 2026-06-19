@@ -1,6 +1,6 @@
-import AppError from "../../core/utils/error.utils.js";
-import executeTransaction from "../../core/utils/dbTransaction.js";
-import AddressModel from "./address.model.js";
+import AppError from '../../core/utils/error.utils.js';
+import executeTransaction from '../../core/utils/dbTransaction.js';
+import AddressModel from './address.model.js';
 
 export const create = async (userId, body) => {
   return await executeTransaction(async (client) => {
@@ -19,7 +19,7 @@ export const create = async (userId, body) => {
 
     return {
       success: true,
-      message: "Address added successfully.",
+      message: 'Address added successfully.',
       address,
     };
   });
@@ -29,7 +29,7 @@ export const getAll = async (userId) => {
   const addresses = await AddressModel.findAll(userId);
   return {
     success: true,
-    message: "Data retrieved successfully",
+    message: 'Data retrieved successfully',
     addresses,
   };
 };
@@ -37,10 +37,10 @@ export const getAll = async (userId) => {
 export const getOne = async (addressId) => {
   const address = await AddressModel.findOne(addressId);
 
-  if (!address) throw AppError.notFound("Address");
+  if (!address) throw AppError.notFound('Address');
   return {
     success: true,
-    message: "Data retrieved successfully",
+    message: 'Data retrieved successfully',
     address,
   };
 };
@@ -49,7 +49,7 @@ export const update = async (userId, addressId, body) => {
   return await executeTransaction(async (client) => {
     const isExist = await AddressModel.findOne(addressId, client);
 
-    if (!isExist) throw AppError.notFound("Address");
+    if (!isExist) throw AppError.notFound('Address');
     if (body.is_default === true) {
       await AddressModel.otherDefaults(userId, false, client);
     }
@@ -57,7 +57,7 @@ export const update = async (userId, addressId, body) => {
     const address = await AddressModel.edit(addressId, body, client);
     return {
       success: true,
-      message: "Address updated successfully",
+      message: 'Address updated successfully',
       address,
     };
   });
@@ -66,7 +66,7 @@ export const update = async (userId, addressId, body) => {
 export const remove = async (addressId) => {
   await executeTransaction(async (client) => {
     const isExist = await AddressModel.findOne(addressId, client);
-    if (!isExist) throw AppError.notFound("Address");
+    if (!isExist) throw AppError.notFound('Address');
 
     await AddressModel.delete(addressId, client);
     return {
@@ -74,4 +74,16 @@ export const remove = async (addressId) => {
       message: `${addressId} deleted successfully`,
     };
   });
+};
+
+// Shared Service
+export const findCustomerAddressById = async (addressId, client) => {
+  return await AddressModel.findOne(addressId, client);
+};
+
+export const findCustomerDefaultAddress = async (
+  customerId,
+  client
+) => {
+  return await AddressModel.findDefault(customerId, client);
 };

@@ -1,4 +1,4 @@
-import prisma from "../../core/configs/db.js";
+import prisma from '../../core/configs/db.js';
 
 const ADDRESS_SELECT_FIELDS = {
   id: true,
@@ -6,7 +6,10 @@ const ADDRESS_SELECT_FIELDS = {
   label: true,
   street: true,
   city: true,
+  country: true,
+  country_code: true,
   province: true,
+  province_code: true,
   postal_code: true,
   is_default: true,
 };
@@ -58,6 +61,16 @@ const AddressModel = {
         is_default: !state,
       },
       data: { is_default: state },
+    });
+  },
+
+  findDefault: async (customer_id, db = prisma) => {
+    return await db.addresses.findUnique({
+      where: {
+        customer_id,
+        is_default: true,
+      },
+      select: ADDRESS_SELECT_FIELDS,
     });
   },
 };
