@@ -381,3 +381,15 @@ export const releaseProductReservation = async (
     client
   );
 };
+
+export const restoreProductStock = async (
+  variantId,
+  quantity,
+  client
+) => {
+  return await ProdVariantsModel.restoreStock(
+    variantId,
+    quantity,
+    client
+  );
+};

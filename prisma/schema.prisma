@@ -347,6 +347,8 @@ model shipments {
   order_id        String         @db.Uuid
   carrier         String?        @db.VarChar(100)
   tracking_number String?        @db.VarChar(255)
+  transaction_id  String?        @db.VarChar(225)
+  label_url       String?        @db.VarChar(500)
   status          ShipmentStatus @default(PROCESSING)
   shipped_at      DateTime?      @db.Timestamp(6)
   delivered_at    DateTime?      @db.Timestamp(6)
@@ -411,10 +413,12 @@ enum PaymentStatus {
   UNPAID
   PAID
   REFUNDED
+  CANCELLED
 }
 
 enum ShipmentStatus {
   PROCESSING
   SHIPPED
   DELIVERED
+  CANCELLED
 }
