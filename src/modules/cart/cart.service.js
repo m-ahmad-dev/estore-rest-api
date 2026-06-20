@@ -8,7 +8,6 @@ import {
 import AppError from '../../core/utils/error.utils.js';
 import * as cartUtils from './cart.utils.js';
 import { findManyProductsByIds } from '../products/product.service.js';
-import { createShippoShipment } from '../shipments/shippo.service.js';
 
 const resolveCartUser = (user) => {
   const { customer_id, session_id } = user;
@@ -500,22 +499,12 @@ export const resolveCartForCheckout = async (
     }
   }
 
-  const shippingRecord = await createShippoShipment({
-    ...checkoutContext,
-    totalWeight,
-  });
-
-  const pricing = cartUtils.buildPricingSummary(
-    subtotal,
-    discount,
-    shippingRecord.fee
-  );
-
   return {
     cart,
     items,
-    shippingRecord,
-    ...pricing,
+    subtotal,
+    discount,
+    totalWeight,
   };
 };
 

@@ -33,3 +33,12 @@ export const createGuestUserOrderSchema = Joi.object({
 })
   .unknown(false)
   .required();
+
+export const cancelOrderSchema = (req) =>
+  Joi.object({
+    email: req.user
+      ? Joi.forbidden()
+      : Joi.string().trim().email().required(),
+  })
+    .unknown(false)
+    .required();

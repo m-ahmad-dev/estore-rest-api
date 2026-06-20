@@ -3,11 +3,14 @@ import AppError from '../../core/utils/error.utils.js';
 import executeTransaction from '../../core/utils/dbTransaction.js';
 import * as cartService from '../cart/cart.service.js';
 import * as addressService from '../address/address.service.js';
+import * as shipmentService from '../shipments/shipments.service.js';
+import * as prodVariantService from '../products/variants/variants.service.js';
+import * as shippoService from '../shipments/shippo.service.js';
+import * as stripeService from '../payment/stripe.service.js';
+import { fireBackgroundTask } from '../../core/utils/async_worker.utils.js';
 import { findCustomerById } from '../customer/customer.service.js';
 import { OrderModel, OrderItemModel } from './order.model.js';
-import { updateVariantStockService } from '../products/variants/variants.service.js';
-import { createShipmentRecord } from '../shipments/shipments.service.js';
-import { processOrderPaymentIntent } from '../payment/stripe.service.js';
+import { findPaymentByOrderId } from '../payment/payment.service.js';
 
 // Private Helpers //
 const generateOrderNumber = () => {
@@ -63,15 +66,20 @@ const resolveVerifiedAddress = async (user, data) => {
       city: address.city,
       state: address.province_code || '',
       postal_code: address.postal_code || '',
-      country_code: address.country_code || 'PK',
+      country_code: address.country_code || 'US',
     };
   }
-  return data.guest_address;
+  return {
+    street: data.guest_address.street,
+    city: data.guest_address.city,
+    state: data.guest_address.province_code,
+    postal_code: data.guest_address.postal_code,
+    country_code: data.guest_address.country_code,
+  };
 };
 
 // Main Services //
 export const createOrderService = async (user, data) => {
-  // Pre-transaction validations and preparations
   const verifiedAddress = await resolveVerifiedAddress(user, data);
   const customerInfo = await prepareCustomerInfo(user);
 
@@ -84,12 +92,24 @@ export const createOrderService = async (user, data) => {
     },
   };
 
-  // Resolve cart and pricing (outside transaction where possible)
+  // 1. Resolve Cart Context (Ab yeh zero network call leta hai, super fast)
   const cartData = await cartService.resolveCartForCheckout(
     user,
     checkoutContext
   );
 
+  // 2. Fetch Live Rates (Sirf cost calculations ke liye - Takes ~1 sec max)
+  const shippingInfo = await shippoService.fetchRatesAndLowestRate({
+    ...checkoutContext,
+    totalWeight: cartData.totalWeight || 1,
+  });
+
+  const calculatedTotal =
+    parseFloat(cartData.subtotal) -
+    parseFloat(cartData.discount) +
+    shippingInfo.fee;
+
+  // 3. Database Transaction Phase
   const { order } = await executeTransaction(async (client) => {
     const orderPayload = {
       order_number: generateOrderNumber(),
@@ -106,17 +126,16 @@ export const createOrderService = async (user, data) => {
         data.payment_method === 'CARD' ? 'UNPAID' : 'PAID',
       subtotal: cartData.subtotal,
       discount_amount: cartData.discount,
-      shipping_cost: cartData.shipping,
-      total_amount: cartData.total,
+      shipping_cost: shippingInfo.fee,
+      total_amount: calculatedTotal,
     };
 
     const newOrder = await OrderModel.create(orderPayload, client);
 
-    // Create order items
     const orderItemPayloads = cartData.items.map((item) => ({
       order_id: newOrder.id,
       variant_id: item.variant_id,
-      product_name: item.product_name || item.variant?.product?.name, // Assume enriched by cart service
+      product_name: item.product_name,
       sku: item.variant.sku,
       variant_options: item.variant.attributes,
       quantity: item.quantity,
@@ -126,9 +145,8 @@ export const createOrderService = async (user, data) => {
 
     await OrderItemModel.insertMany(orderItemPayloads, client);
 
-    // Reserve stock
     for (const item of cartData.items) {
-      await updateVariantStockService(
+      await prodVariantService.updateVariantStockService(
         item.variant.product_id,
         item.variant_id,
         { quantity: item.quantity, operation: 'stock.reserve' },
@@ -136,14 +154,15 @@ export const createOrderService = async (user, data) => {
       );
     }
 
-    // Create shipment
-    await createShipmentRecord(
-      newOrder.id,
+    // Default processing state shipment insert karein
+    await shipmentService.createShipmentRecord(
       {
         order_id: newOrder.id,
-        carrier: cartData.shippingRecord.carrier,
-        tracking_number: cartData.shippingRecord.trackingNumber,
-        status: cartData.shippingRecord.status,
+        carrier: shippingInfo.carrier,
+        transaction_id: null,
+        tracking_number: null,
+        label_url: null,
+        status: 'PROCESSING',
       },
       client
     );
@@ -151,14 +170,42 @@ export const createOrderService = async (user, data) => {
     return { order: newOrder };
   });
 
-  // Post-transaction payment handling
+  // 4. 🚀 TRULY ASYNC BACKGROUND WORKER (No Await - Fire & Forget)
+  fireBackgroundTask(async () => {
+    console.log(
+      `[BACKGROUND TASK STARTED] Initiating Shippo purchase loop for Order: ${order.id}`
+    );
+
+    const labelDetails = await shippoService.purchaseLabelAsync(
+      shippingInfo.rateObjectId
+    );
+    const currentShipment =
+      await shipmentService.findShipmentByOrderId(order.id);
+
+    if (currentShipment) {
+      await shipmentService.updateShippingRecord(currentShipment.id, {
+        transaction_id: labelDetails.transactionId,
+        tracking_number: labelDetails.trackingNumber,
+        label_url: labelDetails.labelUrl,
+        status: 'PROCESSING',
+      });
+      console.log(
+        `[BACKGROUND TASK SUCCESS] Shipment updated with tracking details for Order: ${order.id}`
+      );
+    }
+  });
+
+  // 5. Post-checkout operations (Stripe Intent generation + Empty Cart)
   let paymentIntent = null;
   if (data.payment_method === 'CARD') {
-    paymentIntent = await processOrderPaymentIntent(order.id);
+    paymentIntent = await stripeService.processOrderPaymentIntent(
+      order.id
+    );
   }
 
   await cartService.clearCart(user);
 
+  // Return Response instantly to Postman
   return {
     success: true,
     message:
@@ -175,14 +222,168 @@ export const createOrderService = async (user, data) => {
       paymentIntent: paymentIntent
         ? { clientSecret: paymentIntent.clientSecret }
         : null,
-      shipping: cartData.shippingRecord,
       summary: {
         subtotal: cartData.subtotal,
         discount: cartData.discount,
-        shipping: cartData.shipping,
-        total: cartData.total,
+        shipping: shippingInfo.fee,
+        total: order.total_amount,
       },
     },
+  };
+};
+
+export const cancelOrderService = async (orderId, user, body) => {
+  const order = await OrderModel.findById(orderId);
+
+  if (!order) {
+    throw AppError.notFound(
+      'Order',
+      `Order with ID ${orderId} not found.`
+    );
+  }
+
+  // 1. Ownership Validation
+  if (user) {
+    if (order.customer_id !== user.id) {
+      throw AppError.forbidden(
+        'Access denied',
+        'You do not have permission to cancel this order.'
+      );
+    }
+  } else {
+    // Guest User
+    if (
+      order.customer_id ||
+      !body?.email ||
+      order.guest_email?.toLowerCase() !==
+        body.email.trim().toLowerCase()
+    ) {
+      throw AppError.forbidden(
+        'Access denied',
+        'Invalid email or unauthorized access for guest cancellation.'
+      );
+    }
+  }
+
+  // 2. Status Validation & Idempotency
+  if (order.status === 'CANCELLED') {
+    return {
+      success: true,
+      message: 'Order is already cancelled.',
+      data: {
+        order: {
+          id: order.id,
+          order_number: order.order_number,
+          status: 'CANCELLED',
+        },
+      },
+    };
+  }
+
+  if (!['PENDING', 'CONFIRMED'].includes(order.status)) {
+    throw AppError.badRequest(
+      'Order cannot be cancelled',
+      `Only PENDING or CONFIRMED orders can be cancelled.
+       Current status: ${order.status}.`
+    );
+  }
+
+  // 3. Fetch related records
+  const [shippingRecord, paymentRecord] = await Promise.all([
+    shipmentService.findShipmentByOrderId(order.id),
+    findPaymentByOrderId(order.id),
+  ]);
+
+  // 4. Database Transaction - Core Business Changes
+  await executeTransaction(async (client) => {
+    const orderItems = await OrderItemModel.findByOrderId(
+      orderId,
+      client
+    );
+
+    // Restore stock
+    for (const item of orderItems) {
+      await prodVariantService.restoreProductStock(
+        item.variant_id,
+        item.quantity,
+        client
+      );
+    }
+
+    // Update Order
+    await updateOrderStatus(
+      order.id,
+      { status: 'CANCELLED' },
+      client
+    );
+
+    // Update Shipment Status
+    if (shippingRecord) {
+      await shipmentService.updateShippingRecord(
+        shippingRecord.id,
+        { status: 'CANCELLED' },
+        client
+      );
+    }
+  });
+
+  // 5. External Services (Non-blocking)
+  const warnings = [];
+
+  // Payment Cancellation / Refund
+  if (
+    paymentRecord?.transaction_id &&
+    order.payment_method === 'CARD'
+  ) {
+    try {
+      if (['PAID', 'SUCCEEDED'].includes(order.payment_status)) {
+        await stripeService.refundStripePayment(
+          paymentRecord.transaction_id,
+          order.total_amount
+        );
+      } else {
+        await stripeService.cancelStripePaymentIntent(
+          paymentRecord.transaction_id
+        );
+      }
+    } catch {
+      warnings.push(
+        `Payment could not be refunded automatically.
+         Please contact for support.`
+      );
+    }
+  }
+
+  // Shipment Cancellation
+  if (shippingRecord) {
+    try {
+      await shippoService.cancelShippoShipment(
+        shippingRecord?.transaction_id
+      );
+    } catch {
+      warnings.push(
+        `Shipment cancellation with carrier could not be completed.
+        Please contact for support.`
+      );
+    }
+  }
+
+  // 6. Final Response
+  const updatedOrder = await OrderModel.findById(orderId);
+
+  return {
+    success: true,
+    message: 'Order cancelled successfully.',
+    data: {
+      order: {
+        id: updatedOrder.id,
+        order_number: updatedOrder.order_number,
+        status: updatedOrder.status,
+        payment_status: updatedOrder.payment_status,
+        cancelled_at: updatedOrder.cancelled_at,
+      },
+    },
+    warnings: warnings.length > 0 ? warnings : undefined,
   };
 };
 

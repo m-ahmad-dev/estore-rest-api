@@ -16,3 +16,7 @@ export const updatePaymentByTransactionId = async (
     client
   );
 };
+
+export const findPaymentByOrderId = async (orderId, client) => {
+  return await PaymentModel.findByOrderId(orderId, client);
+};

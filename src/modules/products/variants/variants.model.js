@@ -95,7 +95,7 @@ const VariantModel = {
     db.product_variants.count({ where: { product_id: productId } }),
 
   decrementStockAndReservation: async (id, quantity, db = prisma) => {
-    return db.product_variants.update({
+    return await db.product_variants.update({
       where: { id },
       data: {
         reserved_quantity: { decrement: quantity },
@@ -105,10 +105,19 @@ const VariantModel = {
   },
 
   releaseReservedStock: async (id, quantity, db = prisma) => {
-    return db.product_variants.update({
+    return await db.product_variants.update({
       where: { id },
       data: {
         reserved_quantity: { decrement: quantity },
+      },
+    });
+  },
+
+  restoreStock: async (variantId, quantity, db = prisma) => {
+    return await db.product_variants.update({
+      where: { id: variantId },
+      data: {
+        stock_quantity: { increment: quantity },
       },
     });
   },

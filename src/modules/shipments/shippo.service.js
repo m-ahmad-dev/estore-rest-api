@@ -1,6 +1,5 @@
 import { shippingConfig } from '../../core/configs/env.js';
 import AppError from '../../core/utils/error.utils.js';
-import crypto from 'crypto';
 
 const DEFAULT_PARCEL = {
   length: '10',
@@ -10,81 +9,200 @@ const DEFAULT_PARCEL = {
   mass_unit: 'kg',
 };
 
-export const createShippoShipment = async (orderData) => {
-  // Basic input validation
+// 1. Synchronous phase: Checkout ke time sirf rate nikalne ke liye
+export const fetchRatesAndLowestRate = async (orderData) => {
   if (!orderData?.customer?.name || !orderData?.address?.street) {
     throw AppError.badRequest(
       'Invalid shipping data: customer name and address are required.'
     );
   }
 
-  try {
-    const response = await fetch(
-      'https://api.goshippo.com/shipments',
+  const shipmentResponse = await fetch(
+    'https://api.goshippo.com/shipments',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `ShippoToken ${shippingConfig.shippo.apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        address_from: shippingConfig.shippo.senderAddress,
+        address_to: {
+          name: orderData.customer.name,
+          street1: orderData.address.street,
+          city: orderData.address.city,
+          state: orderData.address.state || '',
+          zip: orderData.address.postal_code || '',
+          country: orderData.address.country_code,
+          phone: orderData.customer.phone,
+          email: orderData.customer.email,
+        },
+        parcels: [
+          {
+            ...DEFAULT_PARCEL,
+            weight:
+              orderData.totalWeight > 0
+                ? orderData.totalWeight.toString()
+                : '1',
+          },
+        ],
+        async: false,
+      }),
+    }
+  );
+
+  const shipmentData = await shipmentResponse.json();
+
+  if (!shipmentResponse.ok) {
+    throw new Error(
+      `Shippo Shipment API error: ${shipmentData.error || 'Unknown error'}`
+    );
+  }
+
+  const rates = shipmentData.rates || [];
+  if (rates.length === 0) {
+    throw new Error(
+      'No shipping rates found for the provided address routing.'
+    );
+  }
+
+  const lowestRate = rates.reduce(
+    (min, rate) =>
+      Number(rate.amount) < Number(min.amount) ? rate : min,
+    rates[0]
+  );
+
+  return {
+    rateObjectId: lowestRate.object_id,
+    carrier: lowestRate.provider || 'Shippo Express',
+    fee: parseFloat(lowestRate.amount),
+  };
+};
+
+// 2. Asynchronous background phase: Background processing loop
+export const purchaseLabelAsync = async (rateObjectId) => {
+  const transactionResponse = await fetch(
+    'https://api.goshippo.com/transactions',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `ShippoToken ${shippingConfig.shippo.apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        rate: rateObjectId,
+        label_file_type: 'PDF',
+        async: false,
+      }),
+    }
+  );
+
+  let transactionData = await transactionResponse.json();
+
+  if (!transactionResponse.ok) {
+    const detailedError =
+      transactionData.messages && transactionData.messages.length > 0
+        ? transactionData.messages[0].text
+        : transactionData.error || 'Unknown error';
+    throw new Error(`Shippo Label Purchase failed: ${detailedError}`);
+  }
+
+  let status = transactionData.status;
+  let retries = 5;
+
+  while (
+    (status === 'QUEUED' ||
+      status === 'WAITING' ||
+      !transactionData.label_url) &&
+    retries > 0
+  ) {
+    console.log(
+      `[SHIPPO ASYNC] Label is queued/processing. Retrying... (${retries} attempts left)`
+    );
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    const pollResponse = await fetch(
+      `https://api.goshippo.com/transactions/${transactionData.object_id}`,
       {
-        method: 'POST',
         headers: {
           Authorization: `ShippoToken ${shippingConfig.shippo.apiToken}`,
-          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          address_from: shippingConfig.shippo.senderAddress,
-          address_to: {
-            name: orderData.customer.name,
-            street1: orderData.address.street,
-            city: orderData.address.city,
-            state: orderData.address.state || '',
-            zip: orderData.address.postal_code || '',
-            country: orderData.address.country_code,
-            phone: orderData.customer.phone,
-            email: orderData.customer.email,
-          },
-          parcels: [
-            {
-              ...DEFAULT_PARCEL,
-              weight:
-                orderData.totalWeight > 0
-                  ? orderData.totalWeight.toString()
-                  : '1',
-            },
-          ],
-          async: false,
-        }),
       }
     );
+
+    transactionData = await pollResponse.json();
+    status = transactionData.status;
+    retries--;
+  }
+
+  if (
+    status === 'ERROR' ||
+    !transactionData.label_url ||
+    !transactionData.tracking_number
+  ) {
+    throw new Error(
+      'Shippo transaction completed but tracking data is missing from carrier.'
+    );
+  }
+
+  return {
+    transactionId: transactionData.object_id,
+    trackingNumber: transactionData.tracking_number,
+    labelUrl: transactionData.label_url,
+  };
+};
+
+export const cancelShippoShipment = async (shippoTransactionId) => {
+  if (!shippoTransactionId) {
+    throw AppError.badRequest(
+      'No valid identifier found for shipment cancellation.'
+    );
+  }
+
+  try {
+    const response = await fetch('https://api.goshippo.com/refunds', {
+      method: 'POST',
+      headers: {
+        Authorization: `ShippoToken ${shippingConfig.shippo.apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        transaction: shippoTransactionId,
+        async: false,
+      }),
+    });
 
     const data = await response.json();
 
     if (!response.ok) {
+      const errMessage = data.message || data.error || '';
+      // Safe check for sandbox environment rejections
+      if (
+        errMessage.toLowerCase().includes('rejected') ||
+        response.status === 400
+      ) {
+        console.warn(
+          `[SHIPPO WARN] Refund rejected by sandbox for transaction: ${shippoTransactionId}`
+        );
+        throw new Error(
+          `[SHIPPO WARN] Refund rejected by sandbox for transaction: ${shippoTransactionId}`
+        );
+      }
       throw new Error(
-        `Shippo API error: ${data.error || data.messages || 'Unknown error'}`
+        errMessage || 'Shippo refund request was rejected.'
       );
     }
 
-    const rates = data.rates || [];
-    const lowestRate = rates.reduce(
-      (min, rate) =>
-        Number(rate.amount) < Number(min.amount) ? rate : min,
-      rates[0] || { amount: 15.0, provider: 'DHL' }
-    );
-
     return {
       success: true,
-      carrier: lowestRate.provider || 'Shippo Express',
-      trackingNumber: data.object_id || `SHIPPO-${Date.now()}`,
-      fee: parseFloat(lowestRate.amount),
-      status: 'PROCESSING',
+      status: data.status,
+      refundId: data.id,
     };
   } catch (error) {
-    // Log error but return graceful fallback for non-critical shipping flow
-    console.error('Shippo API failure:', error);
-
-    return {
-      success: true,
-      carrier: 'Shippo-Fallback',
-      trackingNumber: `SHP-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
-      fee: 12.5,
-      status: 'PROCESSING',
-    };
+    console.error(
+      `[SHIPPO ERROR] Cancellation failed for ${shippoTransactionId}:`,
+      error.message
+    );
+    throw error;
   }
 };
