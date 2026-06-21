@@ -45,7 +45,7 @@ const ORDER_ITEM_SELECTS = {
 
 export const OrderModel = {
   async create(data, db = prisma) {
-    return db.orders.create({
+    return await db.orders.create({
       data,
       select: data.customer_id
         ? CUSTOMER_ORDER_SELECTS
@@ -54,23 +54,87 @@ export const OrderModel = {
   },
 
   async findById(id, db = prisma) {
-    return db.orders.findUnique({
+    return await db.orders.findUnique({
       where: { id },
       include: { customer: true },
     });
   },
 
   async updateStatus(id, updateData, db = prisma) {
-    return db.orders.update({
+    return await db.orders.update({
       where: { id },
       data: updateData,
     });
+  },
+
+  findWithDetails: async (where, db = prisma) => {
+    return await db.orders.findUnique({
+      where,
+      include: {
+        items: { select: ORDER_ITEM_SELECTS },
+        shipments: {
+          select: {
+            id: true,
+            order_id: true,
+            status: true,
+            carrier: true,
+            tracking_number: true,
+            transaction_id: true,
+            label_url: true,
+            delivered_at: true,
+            shipped_at: true,
+          },
+        },
+        payments: {
+          select: {
+            id: true,
+            order_id: true,
+            status: true,
+            method: true,
+            amount: true,
+            transaction_id: true,
+            paid_at: true,
+          },
+        },
+      },
+    });
+  },
+
+  /**
+   * Flexible findMany with support for cursor pagination and filters
+   * @param {Object} options - Query options
+   * @param {Object} [db=prisma] - Prisma client instance
+   */
+  findMany: async (options = {}, db = prisma) => {
+    const {
+      where = {},
+      orderBy = [{ placed_at: 'desc' }, { id: 'desc' }],
+      cursor,
+      take = 15,
+      include = {
+        items: true,
+      },
+    } = options;
+
+    const query = {
+      where,
+      orderBy,
+      take: take + 1,
+      include,
+    };
+
+    if (cursor) {
+      query.cursor = { id: cursor };
+      query.skip = 1;
+    }
+
+    return await db.orders.findMany(query);
   },
 };
 
 export const OrderItemModel = {
   async insertMany(data, db = prisma) {
-    return db.order_items.createManyAndReturn({
+    return await db.order_items.createManyAndReturn({
       data,
       select: ORDER_ITEM_SELECTS,
       skipDuplicates: true,
@@ -78,7 +142,7 @@ export const OrderItemModel = {
   },
 
   async findByOrderId(orderId, db = prisma) {
-    return db.order_items.findMany({
+    return await db.order_items.findMany({
       where: { order_id: orderId },
     });
   },

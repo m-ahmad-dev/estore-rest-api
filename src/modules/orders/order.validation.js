@@ -22,7 +22,7 @@ export const createAuthUserOrderSchema = Joi.object({
 
 export const createGuestUserOrderSchema = Joi.object({
   guest_name: Joi.string().min(2).max(150).required(),
-  guest_email: Joi.string().email().max(255).required(),
+  guest_email: Joi.string().email().max(255).lowercase().required(),
   guest_phone: Joi.string()
     .pattern(/^\+?[1-9]\d{1,14}$/)
     .required(),
@@ -42,3 +42,26 @@ export const cancelOrderSchema = (req) =>
   })
     .unknown(false)
     .required();
+
+export const getCustomerOrdersSchema = Joi.object({
+  cursor: Joi.string().uuid().optional(),
+  limit: Joi.number().integer().min(1).max(100).default(15),
+  status: Joi.string()
+    .valid(
+      'PENDING',
+      'CONFIRMED',
+      'PROCESSING',
+      'SHIPPED',
+      'DELIVERED',
+      'CANCELLED'
+    )
+    .insensitive()
+    .optional(),
+}).unknown(false);
+
+export const lookupOrderSchema = Joi.object({
+  email: Joi.string().trim().email().lowercase().required(),
+  order_number: Joi.string().trim().required(),
+})
+  .unknown(false)
+  .required();

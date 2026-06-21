@@ -387,7 +387,119 @@ export const cancelOrderService = async (orderId, user, body) => {
   };
 };
 
-// Shared query methods (unchanged, with optional client support)
+export const getCustomerOrdersService = async (customerId, query) => {
+  const limit = Math.min(Math.max(Number(query.limit) || 15, 1), 100);
+  const { cursor, status } = query;
+
+  const where = {
+    customer_id: customerId,
+    ...(status && { status: status.toUpperCase() }),
+  };
+
+  const orders = await OrderModel.findMany({
+    where,
+    take: limit,
+    cursor: cursor || undefined,
+    include: {
+      items: {
+        select: {
+          id: true,
+          variant_id: true,
+          quantity: true,
+          total_price: true,
+        },
+      },
+    },
+  });
+
+  // Handle pagination
+  const hasNextPage = orders.length > limit;
+  const results = hasNextPage ? orders.slice(0, limit) : orders;
+  const nextCursor = hasNextPage
+    ? results[results.length - 1].id
+    : null;
+
+  return {
+    success: true,
+    message: 'Data retrieved successfully',
+    data: {
+      orders: results.map((order) => ({
+        id: order.id,
+        order_number: order.order_number,
+        status: order.status,
+        payment_status: order.payment_status,
+        total_amount: Number(order.total_amount),
+        placed_at: order.placed_at,
+        items_count: order.items.length,
+      })),
+      pagination: {
+        next_cursor: nextCursor,
+        limit,
+        has_next: hasNextPage,
+      },
+    },
+  };
+};
+
+export const getCustomerOrderService = async (orderId, user) => {
+  const order = await OrderModel.findWithDetails({ id: orderId });
+
+  if (!order) {
+    throw AppError.notFound(
+      'Order',
+      `Order with ID ${orderId} not found.`
+    );
+  }
+
+  // Authorization checks
+  if (user.id !== order.customer_id) {
+    throw AppError.forbidden(
+      'Order access denied.',
+      'You do not have permission to view this order.'
+    );
+  }
+
+  return {
+    success: true,
+    message: 'Data retireved successfully',
+    order: buildPublicResponsePayload(order, false),
+  };
+};
+
+export const lookupOrderService = async (user, query) => {
+  if (user !== null) {
+    throw AppError.forbidden(
+      'Authenticated user are not allowed',
+      'Authenticated users should use order history endpoints.'
+    );
+  }
+
+  const order = await OrderModel.findWithDetails({
+    order_number: query.order_number,
+  });
+
+  if (!order) {
+    throw AppError.notFound(
+      'Order',
+      `Order with number ${query.order_number} not found.`
+    );
+  }
+
+  if (query.email !== order.guest_email.toLowerCase()) {
+    throw AppError.forbidden(
+      'Order access denied',
+      'You do not have permission to view this order.'
+    );
+  }
+
+  return {
+    success: true,
+    message: 'Data retrieved successfully',
+    order: buildPublicResponsePayload(order, true),
+  };
+};
+
+// Shared Service //
 export const findOrderById = async (orderId, client) =>
   OrderModel.findById(orderId, client);
 
@@ -396,3 +508,52 @@ export const updateOrderStatus = async (orderId, payload, client) =>
 
 export const findItemsByOrderId = async (orderId, client) =>
   OrderItemModel.findByOrderId(orderId, client);
+
+function buildPublicResponsePayload(order, isGuest) {
+  return {
+    id: order.id,
+    status: order.status,
+    payment_status: order.payment_status,
+    payment_method: order.payment_method,
+    subtotal: order.subtotal,
+    discount_amount: order.discount_amount,
+    shipping_cost: order.shipping_cost,
+    total_amount: order.total_amount,
+    placed_at: order.placed_at,
+    items_count: order.items.length,
+    ...(isGuest
+      ? {
+          customer: {
+            name: order.guest_name,
+            email: order.guest_email,
+            phone: order.guest_phone,
+            address: order.guest_address,
+          },
+        }
+      : { customer_id: order.customer_id }),
+    items: order.items.map((item) => ({
+      id: item.id,
+      variant_id: item.variant_id,
+      product_name: item.product_name,
+      sku: item.sku,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      total_price: item.total_price,
+    })),
+    shipments: order.shipments.map((ship) => ({
+      id: ship.id,
+      status: ship.status,
+      carrier: ship.carrier,
+      tracking_number: ship.tracking_number,
+      delivered_at: ship.delivered_at,
+      shipped_at: ship.shipped_at,
+    })),
+    payments: order.payments.map((pay) => ({
+      id: pay.id,
+      status: pay.status,
+      method: pay.method,
+      amount: pay.amount,
+      paid_at: pay.paid_at,
+    })),
+  };
+}

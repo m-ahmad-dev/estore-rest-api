@@ -33,9 +33,10 @@ class AppError extends Error {
   }
 
   // 403
-  static forbidden(message = 'Forbidden') {
+  static forbidden(message = 'Forbidden', details = null) {
     return new AppError(message, 403, {
       errorCode: 'FORBIDDEN',
+      details,
     });
   }
 
