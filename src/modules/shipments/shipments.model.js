@@ -34,6 +34,13 @@ const ShipmentModel = {
       select: SHIPMENT_SELECT_FIELDS,
     });
   },
+
+  updateByOrderId: async (where = {}, data, db = prisma) => {
+    return await db.shipments.updateMany({
+      where,
+      data,
+    });
+  },
 };
 
 export default ShipmentModel;

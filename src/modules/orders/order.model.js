@@ -60,7 +60,7 @@ export const OrderModel = {
     });
   },
 
-  async updateStatus(id, updateData, db = prisma) {
+  async update(id, updateData, db = prisma) {
     return await db.orders.update({
       where: { id },
       data: updateData,
@@ -111,9 +111,7 @@ export const OrderModel = {
       orderBy = [{ placed_at: 'desc' }, { id: 'desc' }],
       cursor,
       take = 15,
-      include = {
-        items: true,
-      },
+      include = { items: { select: { id: true } } },
     } = options;
 
     const query = {

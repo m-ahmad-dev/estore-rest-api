@@ -65,3 +65,72 @@ export const lookupOrderSchema = Joi.object({
 })
   .unknown(false)
   .required();
+
+export const getOrdersAdminSchema = Joi.object({
+  cursor: Joi.string().uuid().optional(),
+  limit: Joi.number().integer().min(1).max(100).default(10),
+  status: Joi.string()
+    .valid(
+      'PENDING',
+      'CONFIRMED',
+      'PROCESSING',
+      'SHIPPED',
+      'DELIVERED',
+      'CANCELLED'
+    )
+    .insensitive()
+    .optional(),
+  payment_status: Joi.string()
+    .valid('UNPAID', 'PAID', 'REFUNDED', 'CANCELLED')
+    .insensitive()
+    .optional(),
+  payment_method: Joi.string()
+    .valid('CASH_ON_DELIVERY', 'CARD')
+    .insensitive()
+    .optional(),
+  search: Joi.string().trim().allow('').max(100).optional(),
+  customer_id: Joi.string().uuid().optional(),
+  from_date: Joi.date().iso().max('now').optional(),
+  to_date: Joi.date()
+    .iso()
+    .min(Joi.ref('from_date'))
+    .max('now')
+    .optional(),
+  min_amount: Joi.number().min(0).optional(),
+  max_amount: Joi.number().min(Joi.ref('min_amount')).optional(),
+  sort: Joi.string()
+    .valid('asc', 'desc')
+    .insensitive()
+    .default('desc'),
+}).unknown(false);
+
+export const updateOrderStatusSchema = Joi.object({
+  status: Joi.string()
+    .valid(
+      'PENDING',
+      'CONFIRMED',
+      'PROCESSING',
+      'SHIPPED',
+      'DELIVERED',
+      'CANCELLED'
+    )
+    .required(),
+})
+  .unknown(false)
+  .required();
+
+export const updateOrderPaymentRecordSchema = Joi.object({
+  status: Joi.string()
+    .valid('PAID', 'UNPAID', 'REFUNDED', 'CANCELLED')
+    .required(),
+})
+  .unknown(false)
+  .required();
+  
+export const updateOrderShipmentRecordSchema = Joi.object({
+  status: Joi.string()
+    .valid('PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED')
+    .required(),
+})
+  .unknown(false)
+  .required();

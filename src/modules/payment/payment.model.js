@@ -18,9 +18,9 @@ export const PaymentModel = {
     });
   },
 
-  updateByTransactionId: async (transactionId, data, db = prisma) => {
+  update: async (where = {}, data, db = prisma) => {
     return db.payments.update({
-      where: { transaction_id: transactionId },
+      where,
       data,
       select: PAYMENT_SELECT_FIELDS,
     });
@@ -30,6 +30,13 @@ export const PaymentModel = {
     return await db.payments.findFirst({
       where: { order_id: orderId },
       select: PAYMENT_SELECT_FIELDS,
+    });
+  },
+
+  updateByOrderId: async (where = {}, data, db = prisma) => {
+    return await db.payments.updateMany({
+      where,
+      data,
     });
   },
 };

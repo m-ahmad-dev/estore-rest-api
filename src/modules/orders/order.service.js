@@ -7,12 +7,13 @@ import * as shipmentService from '../shipments/shipments.service.js';
 import * as prodVariantService from '../products/variants/variants.service.js';
 import * as shippoService from '../shipments/shippo.service.js';
 import * as stripeService from '../payment/stripe.service.js';
+import * as paymentService from '../payment/payment.service.js';
 import { fireBackgroundTask } from '../../core/utils/async_worker.utils.js';
 import { findCustomerById } from '../customer/customer.service.js';
 import { OrderModel, OrderItemModel } from './order.model.js';
-import { findPaymentByOrderId } from '../payment/payment.service.js';
 
 // Private Helpers //
+
 const generateOrderNumber = () => {
   const timestamp = Date.now().toString(36).toUpperCase();
   const randomPart = crypto.randomBytes(6).toString('hex');
@@ -26,29 +27,31 @@ const generateOrderNumber = () => {
 };
 
 const prepareCustomerInfo = async (user) => {
-  if (!user.customer_id) {
-    return null;
-  }
+  if (!user?.customer_id) return null;
+
   const customer = await findCustomerById(user.customer_id);
+  if (!customer) return null;
+
   return {
-    name: `${customer.first_name} ${customer.last_name}`,
+    name: `${customer.first_name} ${customer.last_name}`.trim(),
     phone: customer.phone,
     email: customer.email,
   };
 };
 
 const resolveVerifiedAddress = async (user, data) => {
-  if (user.customer_id) {
+  if (user?.customer_id) {
     let address;
     if (data.address_id) {
       address = await addressService.findCustomerAddressById(
         data.address_id
       );
-      if (!address)
+      if (!address) {
         throw AppError.notFound(
           'Address',
           'Selected address not found.'
         );
+      }
       if (address.customer_id !== user.customer_id) {
         throw AppError.forbidden('Address ownership mismatch.');
       }
@@ -56,10 +59,11 @@ const resolveVerifiedAddress = async (user, data) => {
       address = await addressService.findCustomerDefaultAddress(
         user.customer_id
       );
-      if (!address)
+      if (!address) {
         throw AppError.badRequest(
           'No default address found for customer.'
         );
+      }
     }
     return {
       street: address.street,
@@ -69,19 +73,226 @@ const resolveVerifiedAddress = async (user, data) => {
       country_code: address.country_code || 'US',
     };
   }
+
+  if (!data.guest_address) {
+    throw AppError.badRequest(
+      'Guest shipping address info is required.'
+    );
+  }
+
   return {
     street: data.guest_address.street,
     city: data.guest_address.city,
-    state: data.guest_address.province_code,
-    postal_code: data.guest_address.postal_code,
-    country_code: data.guest_address.country_code,
+    state: data.guest_address.province_code || '',
+    postal_code: data.guest_address.postal_code || '',
+    country_code: data.guest_address.country_code || 'US',
+  };
+};
+
+const validateCancelPermission = (order, user, guestEmail) => {
+  if (user) {
+    if (order.customer_id !== user.id) {
+      throw AppError.forbidden(
+        'Access denied',
+        'You do not have permission to cancel this order.'
+      );
+    }
+    return;
+  }
+
+  const matchesGuest =
+    order.guest_email &&
+    guestEmail &&
+    order.guest_email.toLowerCase() ===
+      guestEmail.trim().toLowerCase();
+
+  if (order.customer_id || !matchesGuest) {
+    throw AppError.forbidden(
+      'Access denied',
+      'Invalid email or unauthorized access.'
+    );
+  }
+};
+
+const performOrderCancellation = async (order) => {
+  if (order.status === 'CANCELLED') {
+    return {
+      success: true,
+      message: 'Order is already cancelled.',
+      data: {
+        order: {
+          id: order.id,
+          order_number: order.order_number,
+          status: order.status,
+        },
+      },
+    };
+  }
+
+  if (!['PENDING', 'CONFIRMED'].includes(order.status)) {
+    throw AppError.badRequest(
+      'Order cannot be cancelled',
+      `Only PENDING or CONFIRMED orders can be cancelled. Current status: ${order.status}.`
+    );
+  }
+
+  const [shippingRecord, paymentRecord] = await Promise.all([
+    shipmentService.findShipmentByOrderId(order.id),
+    paymentService.findPaymentByOrderId(order.id),
+  ]);
+
+  await executeTransaction(async (client) => {
+    const orderItems = await OrderItemModel.findByOrderId(
+      order.id,
+      client
+    );
+
+    for (const item of orderItems) {
+      await prodVariantService.restoreProductStock(
+        item.variant_id,
+        item.quantity,
+        client
+      );
+    }
+
+    await updateOrderStatus(
+      order.id,
+      { status: 'CANCELLED' },
+      client
+    );
+
+    if (shippingRecord) {
+      await shipmentService.updateShippingRecord(
+        shippingRecord.id,
+        { status: 'CANCELLED' },
+        client
+      );
+    }
+  });
+
+  const warnings = [];
+
+  if (
+    paymentRecord?.transaction_id &&
+    order.payment_method === 'CARD'
+  ) {
+    try {
+      if (['PAID', 'SUCCEEDED'].includes(order.payment_status)) {
+        await stripeService.refundStripePayment(
+          paymentRecord.transaction_id,
+          order.total_amount
+        );
+      } else {
+        await stripeService.cancelStripePaymentIntent(
+          paymentRecord.transaction_id
+        );
+      }
+    } catch (err) {
+      console.error(
+        `[Refund Failed] Order ${order.id}:`,
+        err.message
+      );
+      warnings.push('Payment could not be refunded automatically.');
+    }
+  }
+
+  if (shippingRecord?.transaction_id) {
+    try {
+      await shippoService.cancelShippoShipment(
+        shippingRecord.transaction_id
+      );
+    } catch (err) {
+      console.error(
+        `[Shippo Cancel Failed] Order ${order.id}:`,
+        err.message
+      );
+      warnings.push(
+        'Shipment cancellation with carrier could not be completed.'
+      );
+    }
+  }
+
+  const updatedOrder = await OrderModel.findById(order.id);
+
+  return {
+    success: true,
+    message: 'Order cancelled successfully.',
+    data: {
+      order: {
+        id: updatedOrder.id,
+        order_number: updatedOrder.order_number,
+        status: updatedOrder.status,
+        payment_status: updatedOrder.payment_status,
+      },
+    },
+    ...(warnings.length > 0 && { warnings }),
+  };
+};
+
+const buildOrderResponsePayload = (order, scope = 'public') => {
+  const isGuest = !order.customer_id;
+  const isAdmin = scope === 'admin';
+
+  return {
+    id: order.id,
+    status: order.status,
+    payment_status: order.payment_status,
+    payment_method: order.payment_method,
+    subtotal: Number(order.subtotal),
+    discount_amount: Number(order.discount_amount),
+    shipping_cost: Number(order.shipping_cost),
+    total_amount: Number(order.total_amount),
+    placed_at: order.placed_at,
+    items_count: order.items?.length || 0,
+    ...(isGuest
+      ? {
+          customer: {
+            name: order.guest_name,
+            email: order.guest_email,
+            phone: order.guest_phone,
+            address: order.guest_address,
+          },
+        }
+      : { customer_id: order.customer_id }),
+    items: (order.items || []).map((item) => ({
+      id: item.id,
+      variant_id: item.variant_id,
+      product_name: item.product_name,
+      sku: item.sku,
+      quantity: item.quantity,
+      unit_price: Number(item.unit_price),
+      total_price: Number(item.total_price),
+      ...(isAdmin && { variant_options: item.variant_options }),
+    })),
+    shipments: (order.shipments || []).map((ship) => ({
+      id: ship.id,
+      status: ship.status,
+      carrier: ship.carrier,
+      tracking_number: ship.tracking_number,
+      delivered_at: ship.delivered_at,
+      shipped_at: ship.shipped_at,
+      ...(isAdmin && {
+        transaction_id: ship.transaction_id,
+        label_url: ship.label_url,
+      }),
+    })),
+    payments: (order.payments || []).map((pay) => ({
+      id: pay.id,
+      status: pay.status,
+      method: pay.method,
+      amount: Number(pay.amount),
+      paid_at: pay.paid_at,
+      ...(isAdmin && { transaction_id: pay.transaction_id }),
+    })),
   };
 };
 
 // Main Services //
+
 export const createOrderService = async (user, data) => {
   const verifiedAddress = await resolveVerifiedAddress(user, data);
   const customerInfo = await prepareCustomerInfo(user);
+  const isRegistered = !!user?.customer_id;
 
   const checkoutContext = {
     address: verifiedAddress,
@@ -92,34 +303,31 @@ export const createOrderService = async (user, data) => {
     },
   };
 
-  // 1. Resolve Cart Context (Ab yeh zero network call leta hai, super fast)
   const cartData = await cartService.resolveCartForCheckout(
     user,
     checkoutContext
   );
 
-  // 2. Fetch Live Rates (Sirf cost calculations ke liye - Takes ~1 sec max)
   const shippingInfo = await shippoService.fetchRatesAndLowestRate({
     ...checkoutContext,
     totalWeight: cartData.totalWeight || 1,
   });
 
   const calculatedTotal =
-    parseFloat(cartData.subtotal) -
-    parseFloat(cartData.discount) +
+    parseFloat(cartData.subtotal || 0) -
+    parseFloat(cartData.discount || 0) +
     shippingInfo.fee;
 
-  // 3. Database Transaction Phase
   const { order } = await executeTransaction(async (client) => {
     const orderPayload = {
       order_number: generateOrderNumber(),
-      customer_id: user.customer_id || null,
-      address_id: user.customer_id ? data.address_id : null,
-      guest_name: user.customer_id ? null : data.guest_name,
-      guest_email: user.customer_id ? null : data.guest_email,
-      guest_phone: user.customer_id ? null : data.guest_phone,
-      guest_address: user.customer_id ? null : data.guest_address,
-      coupon_id: cartData.cart.coupon_id || null,
+      customer_id: isRegistered ? user.customer_id : null,
+      address_id: isRegistered ? data.address_id : null,
+      guest_name: isRegistered ? null : data.guest_name,
+      guest_email: isRegistered ? null : data.guest_email,
+      guest_phone: isRegistered ? null : data.guest_phone,
+      guest_address: isRegistered ? null : data.guest_address,
+      coupon_id: cartData.cart?.coupon_id || null,
       status: 'PENDING',
       payment_method: data.payment_method,
       payment_status:
@@ -154,7 +362,6 @@ export const createOrderService = async (user, data) => {
       );
     }
 
-    // Default processing state shipment insert karein
     await shipmentService.createShipmentRecord(
       {
         order_id: newOrder.id,
@@ -170,32 +377,39 @@ export const createOrderService = async (user, data) => {
     return { order: newOrder };
   });
 
-  // 4. 🚀 TRULY ASYNC BACKGROUND WORKER (No Await - Fire & Forget)
   fireBackgroundTask(async () => {
-    console.log(
-      `[BACKGROUND TASK STARTED] Initiating Shippo purchase loop for Order: ${order.id}`
-    );
-
-    const labelDetails = await shippoService.purchaseLabelAsync(
-      shippingInfo.rateObjectId
-    );
-    const currentShipment =
-      await shipmentService.findShipmentByOrderId(order.id);
-
-    if (currentShipment) {
-      await shipmentService.updateShippingRecord(currentShipment.id, {
-        transaction_id: labelDetails.transactionId,
-        tracking_number: labelDetails.trackingNumber,
-        label_url: labelDetails.labelUrl,
-        status: 'PROCESSING',
-      });
+    try {
       console.log(
-        `[BACKGROUND TASK SUCCESS] Shipment updated with tracking details for Order: ${order.id}`
+        `[BACKGROUND TASK] Purchasing Shippo Label for Order: ${order.id}`
+      );
+      const labelDetails = await shippoService.purchaseLabelAsync(
+        shippingInfo.rateObjectId
+      );
+      const currentShipment =
+        await shipmentService.findShipmentByOrderId(order.id);
+
+      if (currentShipment) {
+        await shipmentService.updateShippingRecord(
+          currentShipment.id,
+          {
+            transaction_id: labelDetails.transactionId,
+            tracking_number: labelDetails.trackingNumber,
+            label_url: labelDetails.labelUrl,
+            status: 'PROCESSING',
+          }
+        );
+        console.log(
+          `[BACKGROUND TASK SUCCESS] Tracking sync'd for Order: ${order.id}`
+        );
+      }
+    } catch (err) {
+      console.error(
+        `[BACKGROUND TASK ERROR] Shippo labeling failed for Order ${order.id}:`,
+        err
       );
     }
   });
 
-  // 5. Post-checkout operations (Stripe Intent generation + Empty Cart)
   let paymentIntent = null;
   if (data.payment_method === 'CARD') {
     paymentIntent = await stripeService.processOrderPaymentIntent(
@@ -205,7 +419,6 @@ export const createOrderService = async (user, data) => {
 
   await cartService.clearCart(user);
 
-  // Return Response instantly to Postman
   return {
     success: true,
     message:
@@ -232,9 +445,12 @@ export const createOrderService = async (user, data) => {
   };
 };
 
-export const cancelOrderService = async (orderId, user, body) => {
+export const cancelOrderService = async ({
+  orderId,
+  user,
+  guestEmail,
+}) => {
   const order = await OrderModel.findById(orderId);
-
   if (!order) {
     throw AppError.notFound(
       'Order',
@@ -242,149 +458,8 @@ export const cancelOrderService = async (orderId, user, body) => {
     );
   }
 
-  // 1. Ownership Validation
-  if (user) {
-    if (order.customer_id !== user.id) {
-      throw AppError.forbidden(
-        'Access denied',
-        'You do not have permission to cancel this order.'
-      );
-    }
-  } else {
-    // Guest User
-    if (
-      order.customer_id ||
-      !body?.email ||
-      order.guest_email?.toLowerCase() !==
-        body.email.trim().toLowerCase()
-    ) {
-      throw AppError.forbidden(
-        'Access denied',
-        'Invalid email or unauthorized access for guest cancellation.'
-      );
-    }
-  }
-
-  // 2. Status Validation & Idempotency
-  if (order.status === 'CANCELLED') {
-    return {
-      success: true,
-      message: 'Order is already cancelled.',
-      data: {
-        order: {
-          id: order.id,
-          order_number: order.order_number,
-          status: 'CANCELLED',
-        },
-      },
-    };
-  }
-
-  if (!['PENDING', 'CONFIRMED'].includes(order.status)) {
-    throw AppError.badRequest(
-      'Order cannot be cancelled',
-      `Only PENDING or CONFIRMED orders can be cancelled.
-       Current status: ${order.status}.`
-    );
-  }
-
-  // 3. Fetch related records
-  const [shippingRecord, paymentRecord] = await Promise.all([
-    shipmentService.findShipmentByOrderId(order.id),
-    findPaymentByOrderId(order.id),
-  ]);
-
-  // 4. Database Transaction - Core Business Changes
-  await executeTransaction(async (client) => {
-    const orderItems = await OrderItemModel.findByOrderId(
-      orderId,
-      client
-    );
-
-    // Restore stock
-    for (const item of orderItems) {
-      await prodVariantService.restoreProductStock(
-        item.variant_id,
-        item.quantity,
-        client
-      );
-    }
-
-    // Update Order
-    await updateOrderStatus(
-      order.id,
-      { status: 'CANCELLED' },
-      client
-    );
-
-    // Update Shipment Status
-    if (shippingRecord) {
-      await shipmentService.updateShippingRecord(
-        shippingRecord.id,
-        { status: 'CANCELLED' },
-        client
-      );
-    }
-  });
-
-  // 5. External Services (Non-blocking)
-  const warnings = [];
-
-  // Payment Cancellation / Refund
-  if (
-    paymentRecord?.transaction_id &&
-    order.payment_method === 'CARD'
-  ) {
-    try {
-      if (['PAID', 'SUCCEEDED'].includes(order.payment_status)) {
-        await stripeService.refundStripePayment(
-          paymentRecord.transaction_id,
-          order.total_amount
-        );
-      } else {
-        await stripeService.cancelStripePaymentIntent(
-          paymentRecord.transaction_id
-        );
-      }
-    } catch {
-      warnings.push(
-        `Payment could not be refunded automatically.
-         Please contact for support.`
-      );
-    }
-  }
-
-  // Shipment Cancellation
-  if (shippingRecord) {
-    try {
-      await shippoService.cancelShippoShipment(
-        shippingRecord?.transaction_id
-      );
-    } catch {
-      warnings.push(
-        `Shipment cancellation with carrier could not be completed.
-        Please contact for support.`
-      );
-    }
-  }
-
-  // 6. Final Response
-  const updatedOrder = await OrderModel.findById(orderId);
-
-  return {
-    success: true,
-    message: 'Order cancelled successfully.',
-    data: {
-      order: {
-        id: updatedOrder.id,
-        order_number: updatedOrder.order_number,
-        status: updatedOrder.status,
-        payment_status: updatedOrder.payment_status,
-        cancelled_at: updatedOrder.cancelled_at,
-      },
-    },
-    warnings: warnings.length > 0 ? warnings : undefined,
-  };
+  validateCancelPermission(order, user, guestEmail);
+  return performOrderCancellation(order);
 };
 
 export const getCustomerOrdersService = async (customerId, query) => {
@@ -398,21 +473,16 @@ export const getCustomerOrdersService = async (customerId, query) => {
 
   const orders = await OrderModel.findMany({
     where,
-    take: limit,
-    cursor: cursor || undefined,
+    take: limit + 1,
+    cursor: cursor ? { id: cursor } : undefined,
+    orderBy: { placed_at: 'desc' },
     include: {
       items: {
-        select: {
-          id: true,
-          variant_id: true,
-          quantity: true,
-          total_price: true,
-        },
+        select: { id: true },
       },
     },
   });
 
-  // Handle pagination
   const hasNextPage = orders.length > limit;
   const results = hasNextPage ? orders.slice(0, limit) : orders;
   const nextCursor = hasNextPage
@@ -443,7 +513,6 @@ export const getCustomerOrdersService = async (customerId, query) => {
 
 export const getCustomerOrderService = async (orderId, user) => {
   const order = await OrderModel.findWithDetails({ id: orderId });
-
   if (!order) {
     throw AppError.notFound(
       'Order',
@@ -451,7 +520,6 @@ export const getCustomerOrderService = async (orderId, user) => {
     );
   }
 
-  // Authorization checks
   if (user.id !== order.customer_id) {
     throw AppError.forbidden(
       'Order access denied.',
@@ -461,8 +529,8 @@ export const getCustomerOrderService = async (orderId, user) => {
 
   return {
     success: true,
-    message: 'Data retireved successfully',
-    order: buildPublicResponsePayload(order, false),
+    message: 'Data retrieved successfully',
+    order: buildOrderResponsePayload(order, 'public'),
   };
 };
 
@@ -485,7 +553,10 @@ export const lookupOrderService = async (user, query) => {
     );
   }
 
-  if (query.email !== order.guest_email.toLowerCase()) {
+  if (
+    !order.guest_email ||
+    query.email?.toLowerCase() !== order.guest_email.toLowerCase()
+  ) {
     throw AppError.forbidden(
       'Order access denied',
       'You do not have permission to view this order.'
@@ -495,65 +566,278 @@ export const lookupOrderService = async (user, query) => {
   return {
     success: true,
     message: 'Data retrieved successfully',
-    order: buildPublicResponsePayload(order, true),
+    order: buildOrderResponsePayload(order, 'public'),
   };
 };
 
-// Shared Service //
+export const getAllOrdersService = async (query) => {
+  const limit = Math.min(Math.max(Number(query.limit) || 10, 1), 100);
+  const sortOrder =
+    query.sort?.toLowerCase() === 'asc' ? 'asc' : 'desc';
+
+  const {
+    cursor,
+    status,
+    payment_status,
+    payment_method,
+    search,
+    customer_id,
+    from_date,
+    to_date,
+    min_amount,
+    max_amount,
+  } = query;
+
+  if (customer_id) {
+    const customer = await findCustomerById(customer_id);
+    if (!customer) {
+      throw AppError.notFound(
+        'Customer',
+        `Customer with ID ${customer_id} not found`
+      );
+    }
+  }
+
+  const where = {};
+
+  if (status) where.status = status.toUpperCase();
+  if (payment_status)
+    where.payment_status = payment_status.toUpperCase();
+  if (payment_method)
+    where.payment_method = payment_method.toUpperCase();
+  if (customer_id) where.customer_id = customer_id;
+
+  if (search?.trim()) {
+    const term = search.trim();
+    where.OR = [
+      { order_number: { contains: term, mode: 'insensitive' } },
+      { guest_name: { contains: term, mode: 'insensitive' } },
+      { guest_email: { contains: term, mode: 'insensitive' } },
+      {
+        customer: {
+          first_name: { contains: term, mode: 'insensitive' },
+        },
+      },
+      {
+        customer: {
+          last_name: { contains: term, mode: 'insensitive' },
+        },
+      },
+      {
+        items: {
+          some: {
+            OR: [
+              {
+                product_name: { contains: term, mode: 'insensitive' },
+              },
+              { sku: { contains: term, mode: 'insensitive' } },
+            ],
+          },
+        },
+      },
+      {
+        shipments: {
+          some: {
+            tracking_number: { contains: term, mode: 'insensitive' },
+          },
+        },
+      },
+    ];
+  }
+
+  if (min_amount !== undefined || max_amount !== undefined) {
+    where.total_amount = {};
+    if (min_amount !== undefined)
+      where.total_amount.gte = Number(min_amount);
+    if (max_amount !== undefined)
+      where.total_amount.lte = Number(max_amount);
+  }
+
+  if (from_date || to_date) {
+    where.placed_at = {};
+    if (from_date) where.placed_at.gte = new Date(from_date);
+    if (to_date) where.placed_at.lte = new Date(to_date);
+  }
+
+  const orders = await OrderModel.findMany({
+    where,
+    orderBy: { placed_at: sortOrder },
+    cursor: cursor ? { id: cursor } : undefined,
+    take: limit + 1,
+    include: {
+      items: { select: { id: true } },
+    },
+  });
+
+  const hasNextPage = orders.length > limit;
+  const results = hasNextPage ? orders.slice(0, limit) : orders;
+  const nextCursor = hasNextPage
+    ? results[results.length - 1].id
+    : null;
+
+  return {
+    success: true,
+    message: 'Orders retrieved successfully.',
+    data: {
+      orders: results.map((order) => ({
+        id: order.id,
+        order_number: order.order_number,
+        customer_id: order.customer_id,
+        status: order.status,
+        payment_method: order.payment_method,
+        payment_status: order.payment_status,
+        subtotal: Number(order.subtotal),
+        discount_amount: Number(order.discount_amount),
+        shipping_cost: Number(order.shipping_cost),
+        total_amount: Number(order.total_amount),
+        placed_at: order.placed_at,
+        items_count: order.items.length,
+        customer_type: order.customer_id ? 'REGISTERED' : 'GUEST',
+        guest_details: order.customer_id
+          ? null
+          : { name: order.guest_name, email: order.guest_email },
+      })),
+      pagination: {
+        next_cursor: nextCursor,
+        limit,
+        has_next: hasNextPage,
+      },
+    },
+  };
+};
+
+export const getOrderForAdminService = async (orderId) => {
+  const order = await OrderModel.findWithDetails({ id: orderId });
+  if (!order) {
+    throw AppError.notFound(
+      'Order',
+      `Order with ID ${orderId} not found.`
+    );
+  }
+
+  return {
+    success: true,
+    message: 'Data retrieved successfully',
+    order: buildOrderResponsePayload(order, 'admin'),
+  };
+};
+
+export const updateOrderStatusService = async (orderId, body) => {
+  return await executeTransaction(async (client) => {
+    const order = await OrderModel.findById(orderId, client);
+    if (!order) {
+      throw AppError.notFound(
+        'Order',
+        `Order with ID ${orderId} not found.`
+      );
+    }
+
+    if (order.status === body.status) {
+      return {
+        success: true,
+        message: 'Order updated successfully',
+        order: { id: order.id, status: order.status },
+      };
+    }
+
+    const updatedOrder = await OrderModel.update(
+      orderId,
+      { status: body.status },
+      client
+    );
+
+    return {
+      success: true,
+      message: 'Order updated successfully',
+      order: { id: updatedOrder.id, status: updatedOrder.status },
+    };
+  });
+};
+
+export const updateOrderPaymentStatusService = async (
+  orderId,
+  body
+) => {
+  return await executeTransaction(async (client) => {
+    const order = await OrderModel.findById(orderId, client);
+    if (!order) {
+      throw AppError.notFound(
+        'Order',
+        `Order with ID ${orderId} not found.`
+      );
+    }
+
+    await paymentService.updatePaymentRecordByOrder(
+      orderId,
+      { status: body.status },
+      client
+    );
+    await OrderModel.update(
+      orderId,
+      { payment_status: body.status },
+      client
+    );
+
+    const updatedPayment = await paymentService.findPaymentByOrderId(
+      orderId,
+      client
+    );
+
+    return {
+      success: true,
+      message: 'Order payment updated successfully',
+      data: { id: orderId, status: updatedPayment.status },
+    };
+  });
+};
+
+export const updateOrderShippingStatusService = async (
+  orderId,
+  body
+) => {
+  return await executeTransaction(async (client) => {
+    const order = await OrderModel.findById(orderId, client);
+    if (!order) {
+      throw AppError.notFound(
+        'Order',
+        `Order with ID ${orderId} not found.`
+      );
+    }
+
+    await shipmentService.updateShippingByOrderId(
+      orderId,
+      { status: body.status },
+      client
+    );
+    const updatedRecord = await shipmentService.findShipmentByOrderId(
+      orderId,
+      client
+    );
+
+    return {
+      success: true,
+      message: 'Order shipping updated successfully',
+      data: { id: orderId, status: updatedRecord.status },
+    };
+  });
+};
+
+export const cancelOrderAdminService = async ({ orderId }) => {
+  const order = await OrderModel.findById(orderId);
+  if (!order) {
+    throw AppError.notFound(
+      'Order',
+      `Order with ID ${orderId} not found.`
+    );
+  }
+  return performOrderCancellation(order);
+};
+
+// Shared Model Utility Wrappers //
+
 export const findOrderById = async (orderId, client) =>
   OrderModel.findById(orderId, client);
-
 export const updateOrderStatus = async (orderId, payload, client) =>
-  OrderModel.updateStatus(orderId, payload, client);
-
+  OrderModel.update(orderId, payload, client);
 export const findItemsByOrderId = async (orderId, client) =>
   OrderItemModel.findByOrderId(orderId, client);
-
-function buildPublicResponsePayload(order, isGuest) {
-  return {
-    id: order.id,
-    status: order.status,
-    payment_status: order.payment_status,
-    payment_method: order.payment_method,
-    subtotal: order.subtotal,
-    discount_amount: order.discount_amount,
-    shipping_cost: order.shipping_cost,
-    total_amount: order.total_amount,
-    placed_at: order.placed_at,
-    items_count: order.items.length,
-    ...(isGuest
-      ? {
-          customer: {
-            name: order.guest_name,
-            email: order.guest_email,
-            phone: order.guest_phone,
-            address: order.guest_address,
-          },
-        }
-      : { customer_id: order.customer_id }),
-    items: order.items.map((item) => ({
-      id: item.id,
-      variant_id: item.variant_id,
-      product_name: item.product_name,
-      sku: item.sku,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-      total_price: item.total_price,
-    })),
-    shipments: order.shipments.map((ship) => ({
-      id: ship.id,
-      status: ship.status,
-      carrier: ship.carrier,
-      tracking_number: ship.tracking_number,
-      delivered_at: ship.delivered_at,
-      shipped_at: ship.shipped_at,
-    })),
-    payments: order.payments.map((pay) => ({
-      id: pay.id,
-      status: pay.status,
-      method: pay.method,
-      amount: pay.amount,
-      paid_at: pay.paid_at,
-    })),
-  };
-}

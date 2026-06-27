@@ -10,8 +10,8 @@ export const updatePaymentByTransactionId = async (
   payload,
   client
 ) => {
-  return await PaymentModel.updateByTransactionId(
-    transactionId,
+  return await PaymentModel.update(
+    { transaction_id: transactionId },
     payload,
     client
   );
@@ -19,4 +19,18 @@ export const updatePaymentByTransactionId = async (
 
 export const findPaymentByOrderId = async (orderId, client) => {
   return await PaymentModel.findByOrderId(orderId, client);
+};
+
+export const updatePaymentRecordByOrder = async (
+  orderId,
+  payload,
+  client
+) => {
+  const paymentRecord = await PaymentModel.updateByOrderId(
+    { order_id: orderId },
+    payload,
+    client
+  );
+
+  return paymentRecord;
 };

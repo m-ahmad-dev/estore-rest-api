@@ -11,12 +11,11 @@ export const createOrder = asyncWrapper(async (req, res) => {
 });
 
 export const cancelOrder = asyncWrapper(async (req, res) => {
-  const { id } = req.params;
-  const result = await orderServices.cancelOrderService(
-    id,
-    req.user,
-    req.body
-  );
+  const result = await orderServices.cancelOrderService({
+    orderId: req.params.id,
+    user: req.user,
+    guestEmail: req.body?.email,
+  });
 
   res.status(200).json(result);
 });
@@ -44,6 +43,62 @@ export const lookupGuestOrder = asyncWrapper(async (req, res) => {
     req.user,
     req.query
   );
+
+  res.status(200).json(result);
+});
+
+export const getAllOrders = asyncWrapper(async (req, res) => {
+  const result = await orderServices.getAllOrdersService(req.query);
+
+  res.status(200).json(result);
+});
+
+export const getOrderForAdmin = asyncWrapper(async (req, res) => {
+  const result = await orderServices.getOrderForAdminService(
+    req.params.id
+  );
+
+  res.status(200).json(result);
+});
+
+export const updateOrderStatus = asyncWrapper(async (req, res) => {
+  const result = await orderServices.updateOrderStatusService(
+    req.params.id,
+    req.body
+  );
+
+  res.status(200).json(result);
+});
+
+export const updateOrderPaymentRecord = asyncWrapper(
+  async (req, res) => {
+    const result =
+      await orderServices.updateOrderPaymentStatusService(
+        req.params.id,
+        req.body
+      );
+
+    res.status(200).json(result);
+  }
+);
+
+export const updateOrderShippingRecord = asyncWrapper(
+  async (req, res) => {
+    const result =
+      await orderServices.updateOrderShippingStatusService(
+        req.params.id,
+        req.body
+      );
+
+    res.status(200).json(result);
+  }
+);
+
+export const cancelOrderAdmin = asyncWrapper(async (req, res) => {
+  const result = await orderServices.cancelOrderAdminService({
+    orderId: req.params.id,
+    admin: req.user,
+  });
 
   res.status(200).json(result);
 });
