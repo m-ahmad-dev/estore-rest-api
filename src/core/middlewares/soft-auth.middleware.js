@@ -3,7 +3,7 @@ import env from '../configs/env.js';
 
 const softAuth = (req, res, next) => {
   try {
-    const accessToken = req.cookies?.access_token;
+    const accessToken = req.cookies?.accessToken;
 
     if (!accessToken) {
       req.user = null;
@@ -12,8 +12,9 @@ const softAuth = (req, res, next) => {
 
     try {
       const payload = jwt.verify(accessToken, env.ACCESS_SECRET);
+
       req.user = {
-        id: payload.sub,
+        id: payload.id,
         role: payload.role,
       };
     } catch {

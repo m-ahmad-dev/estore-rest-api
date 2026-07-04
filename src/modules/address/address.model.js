@@ -67,8 +67,10 @@ const AddressModel = {
   findDefault: async (customer_id, db = prisma) => {
     return await db.addresses.findUnique({
       where: {
-        customer_id,
-        is_default: true,
+        customer_id_is_default: {
+          customer_id,
+          is_default: true,
+        },
       },
       select: ADDRESS_SELECT_FIELDS,
     });

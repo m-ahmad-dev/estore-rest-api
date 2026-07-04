@@ -9,15 +9,23 @@ import authorizePermission from '../../core/middlewares/pbac.middleware.js';
 import * as orderSchema from './order.validation.js';
 
 const router = express.Router();
+const adminRouter = express.Router();
 
+/* ==========================================================================
+   PUBLIC / CUSTOMER ROUTES
+   ========================================================================== */
+
+// Handle dynamic checkout validation elegantly via split endpoints or execution wrapper
 router.post(
   '/orders',
+  softAuth,
   identifyCartUser,
-  validate((req) =>
-    req.cartUser.customer_id
+  (req, res, next) => {
+    const schema = req.cartUser.customer_id
       ? orderSchema.createAuthUserOrderSchema
-      : orderSchema.createGuestUserOrderSchema
-  ),
+      : orderSchema.createGuestUserOrderSchema;
+    return validate(schema)(req, res, next);
+  },
   orderControllers.createOrder
 );
 
@@ -46,55 +54,61 @@ router.patch(
   '/orders/:id/cancel',
   validateUUID,
   softAuth,
+  identifyCartUser, // Fixed: Added to prevent crashes if guests can cancel orders
   validate(orderSchema.cancelOrderSchema),
   orderControllers.cancelOrder
 );
 
-// Admin Access Routes
-router.use('/admin/orders', auth);
+// ADMIN ROUTES (Isolated Scoped Router)
 
-router.get(
-  '/admin/orders',
+adminRouter.use(auth); 
+
+adminRouter.get(
+  '/',
   authorizePermission('orders.view'),
   validate(orderSchema.getOrdersAdminSchema, 'query'),
   orderControllers.getAllOrders
 );
 
-router.get(
-  '/admin/orders/:id',
+adminRouter.get(
+  '/:id',
   validateUUID,
   authorizePermission('orders.view'),
   orderControllers.getOrderForAdmin
 );
 
-router.patch(
-  '/admin/orders/:id/status',
+adminRouter.patch(
+  '/:id/status',
   validateUUID,
   authorizePermission('orders.edit'),
   validate(orderSchema.updateOrderStatusSchema),
   orderControllers.updateOrderStatus
 );
 
-router.patch(
-  '/admin/orders/:id/payment/status',
+adminRouter.patch(
+  '/:id/payment/status',
   validateUUID,
   authorizePermission('orders.update_status'),
   validate(orderSchema.updateOrderPaymentRecordSchema),
   orderControllers.updateOrderPaymentRecord
 );
-router.patch(
-  '/admin/orders/:id/shipment/status',
+
+adminRouter.patch(
+  '/:id/shipment/status',
   validateUUID,
   authorizePermission('orders.update_status'),
   validate(orderSchema.updateOrderShipmentRecordSchema),
   orderControllers.updateOrderShippingRecord
 );
 
-router.delete(
-  '/admin/orders/:id/cancel',
+adminRouter.delete(
+  '/:id/cancel',
   validateUUID,
   authorizePermission('orders.cancel'),
   orderControllers.cancelOrderAdmin
 );
+
+// Mount the admin sub-router cleanly
+router.use('/admin/orders', adminRouter);
 
 export default router;

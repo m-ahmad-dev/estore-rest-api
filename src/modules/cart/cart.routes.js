@@ -2,6 +2,7 @@ import express from 'express';
 import * as cartControllers from './cart.controller.js';
 import validate from '../../core/middlewares/input_validate.middleware.js';
 import validateUUID from '../../core/middlewares/valid_uuid.middleware.js';
+import softAuth from '../../core/middlewares/soft-auth.middleware.js';
 import identifyCartUser from '../../core/middlewares/identify_user.middleware.js';
 import {
   addCartItemSchema,
@@ -10,6 +11,8 @@ import {
 } from './cart.validation.js';
 
 const router = express.Router();
+
+router.use(softAuth);
 
 router.get('/', identifyCartUser, cartControllers.getCart);
 

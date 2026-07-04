@@ -330,8 +330,7 @@ export const createOrderService = async (user, data) => {
       coupon_id: cartData.cart?.coupon_id || null,
       status: 'PENDING',
       payment_method: data.payment_method,
-      payment_status:
-        data.payment_method === 'CARD' ? 'UNPAID' : 'PAID',
+      payment_status: 'UNPAID',
       subtotal: cartData.subtotal,
       discount_amount: cartData.discount,
       shipping_cost: shippingInfo.fee,

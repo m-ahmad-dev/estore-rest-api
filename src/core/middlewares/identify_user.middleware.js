@@ -1,18 +1,11 @@
-import crypto from 'crypto';
 import { getBaseCookieConfig } from '../utils/cookies.utils.js';
 
 const GUEST_COOKIE_NAME = 'guest_id';
 const GUEST_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
 const generateGuestId = () => crypto.randomUUID();
 
-/**
- * Middleware to identify the cart user.
- * - Uses `customer_id` for authenticated users
- * - Uses `session_id` (guest_id cookie) for guests
- */
 const identifyCartUser = (req, res, next) => {
-  // Authenticated User
-  if (req.user?.id) {
+  if (req.user) {
     req.cartUser = {
       customer_id: req.user.id,
       session_id: null,
@@ -20,7 +13,7 @@ const identifyCartUser = (req, res, next) => {
     return next();
   }
 
-  // Guest User
+  // Fallback: Handle Guest User
   let guestId = req.cookies[GUEST_COOKIE_NAME];
 
   if (!guestId) {
