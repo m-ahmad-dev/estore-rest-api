@@ -60,6 +60,15 @@ const VariantModel = {
       orderBy: { sku: 'asc' },
     }),
 
+  findManyByIds: (variantsId, db = prisma) => {
+    return db.product_variants.findMany({
+      where: {
+        id: { in: variantsId },
+      },
+      select: VARIANT_SELECT_FIELDS,
+    });
+  },
+
   update: async (productId, variantId, data, db = prisma) =>
     db.product_variants.update({
       where: { id: variantId, product_id: productId },

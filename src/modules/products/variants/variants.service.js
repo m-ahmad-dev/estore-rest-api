@@ -358,6 +358,10 @@ export const findVariantById = async (variantId, client) => {
   return variant;
 };
 
+export const findManyVariantsByIds = (variantsId, client) => {
+  return ProdVariantsModel.findManyByIds(variantsId, client);
+};
+
 export const decreaseProductStockAndReverved = async (
   variantId,
   quantity,

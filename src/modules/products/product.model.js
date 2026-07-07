@@ -204,12 +204,17 @@ const ProductModel = {
   exists: async (id, db = prisma) => {
     const product = await db.products.findUnique({
       where: { id },
-      select: { id: true, deleted_at: true },
+      select: {
+        id: true,
+        deleted_at: true,
+        is_active: true,
+      },
     });
 
     return {
       exists: !!product,
       deleted: !!product?.deleted_at,
+      active: product.is_active,
     };
   },
 

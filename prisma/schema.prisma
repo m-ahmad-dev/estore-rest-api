@@ -7,20 +7,23 @@ datasource db {
 }
 
 model admins {
-  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name                String              @db.VarChar(150)
-  email               String              @unique @db.VarChar(255)
-  password_hash       String
-  role                String              @default("admin") @db.VarChar(20)
-  is_active           Boolean?            @default(true)
-  created_by          String?             @db.Uuid
-  created_at          DateTime?           @default(now()) @db.Timestamp(6)
-  deleted_at          DateTime?           @db.Timestamp(6)
-  phone_number        String?             @unique @db.VarChar(20)
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String    @db.VarChar(150)
+  email         String    @unique @db.VarChar(255)
+  password_hash String
+  role          String    @default("admin") @db.VarChar(20)
+  is_active     Boolean?  @default(true)
+  created_by    String?   @db.Uuid
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  deleted_at    DateTime? @db.Timestamp(6)
+  phone_number  String?   @unique @db.VarChar(20)
+
   permissions         admin_permissions[] @relation("AdminOwnedPermissions")
   granted_permissions admin_permissions[] @relation("AdminGrantedPermissions")
   creator             admins?             @relation("AdminHierarchy", fields: [created_by], references: [id], onUpdate: NoAction)
   created_accounts    admins[]            @relation("AdminHierarchy")
+  approved_reviews    reviews[]           @relation("ReviewApprover")
+  reviews             reviews[]           @relation("AdminReviews")
 
   @@index([email], map: "idx_admins_email")
   @@index([role], map: "idx_admins_role")
@@ -280,9 +283,11 @@ model addresses {
   country       String    @db.VarChar(100)
   country_code  String    @db.Char(2)
   postal_code   String?   @db.VarChar(20)
-  is_default    Boolean?  @default(false)
+  is_default    Boolean   @default(false)
   customer      customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
   orders        orders[]
+
+  @@unique([customer_id, is_default])
 }
 
 model coupons {
@@ -324,22 +329,39 @@ model payments {
 }
 
 model reviews {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  customer_id String    @db.Uuid
-  product_id  String    @db.Uuid
-  order_id    String    @db.Uuid
-  rating      Int
-  comment     String?
-  is_verified Boolean?  @default(false)
-  is_approved Boolean?  @default(false)
-  created_at  DateTime? @default(now()) @db.Timestamp(6)
-  customer    customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
-  order       orders    @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  product     products  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customer_id       String       @db.Uuid
+  product_id        String       @db.Uuid
+  order_id          String       @db.Uuid
+  rating            Int          @db.SmallInt
+  title             String?      @db.VarChar(120)
+  comment           String?
+  status            ReviewStatus @default(PENDING)
+  rejection_reason  String?
+  verified_purchase Boolean      @default(true)
+  helpful_count     Int          @default(0)
+  created_at        DateTime     @default(now())
+  updated_at        DateTime     @updatedAt
+  approved_at       DateTime?
+  approved_by       String?      @db.Uuid
+  author_id         String?      @db.Uuid
+
+  customer customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  product  products  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  order    orders    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  approver admins? @relation("ReviewApprover", fields: [approved_by], references: [id], onDelete: SetNull)
+  author   admins? @relation("AdminReviews", fields: [author_id], references: [id], onDelete: SetNull)
 
   @@unique([customer_id, product_id, order_id])
-  @@index([is_approved], map: "idx_reviews_approved")
-  @@index([product_id], map: "idx_reviews_product")
+  @@index([product_id, status])
+  @@index([product_id, rating])
+  @@index([product_id, status, created_at])
+  @@index([customer_id])
+  @@index([status])
+  @@index([approved_by])
+  @@index([author_id])
+  @@index([created_at])
 }
 
 model shipments {
@@ -425,4 +447,10 @@ enum ShipmentStatus {
   SHIPPED
   DELIVERED
   CANCELLED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

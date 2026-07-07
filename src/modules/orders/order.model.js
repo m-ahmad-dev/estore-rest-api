@@ -56,7 +56,7 @@ export const OrderModel = {
   async findById(id, db = prisma) {
     return await db.orders.findUnique({
       where: { id },
-      include: { customer: true },
+      include: { customer: true, items: true },
     });
   },
 
