@@ -179,6 +179,40 @@ const ReviewsModel = {
       LIMIT ${limit + 1}
     `;
   },
+
+  findWithDetails: async (where, db = prisma) => {
+    return await db.reviews.findUnique({
+      where,
+      select: {
+        ...DEFAULT_SELECTS,
+        customer: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            email: true,
+          },
+        },
+        product: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            is_active: true,
+            created_at: true,
+          },
+        },
+        order: {
+          select: {
+            id: true,
+            order_number: true,
+            status: true,
+            placed_at: true,
+          },
+        },
+      },
+    });
+  },
 };
 
 export default ReviewsModel;

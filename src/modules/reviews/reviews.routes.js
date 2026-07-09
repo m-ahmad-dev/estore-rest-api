@@ -55,4 +55,29 @@ router.get(
   reviewsController.getReviewsForAdmin
 );
 
+router.get(
+  '/admin/reviews/:id',
+  validateUUID,
+  auth,
+  authorizePermission('reviews.view'),
+  reviewsController.getReview
+);
+
+router.patch(
+  '/admin/reviews/:id/status',
+  validateUUID,
+  auth,
+  authorizePermission('reviews.edit'),
+  validate(reviewSchema.updateReviewStatusSchema),
+  reviewsController.updateReviewStatus
+);
+
+router.delete(
+  '/admin/reviews/:id',
+  validateUUID,
+  auth,
+  authorizePermission('reviews.delete'),
+  reviewsController.deleteReviewAdmin
+);
+
 export default router;

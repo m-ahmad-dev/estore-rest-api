@@ -129,3 +129,29 @@ export const getAllReviewsSchema = Joi.object({
     .lowercase()
     .default('desc'),
 }).unknown(false);
+
+export const updateReviewStatusSchema = Joi.object({
+  status: Joi.string()
+    .valid('PENDING', 'APPROVED', 'REJECTED')
+    .required()
+    .messages({
+      'any.required': 'Status is required.',
+      'any.only':
+        'Status must be one of: PENDING, APPROVED, REJECTED.',
+    }),
+
+  rejection_reason: Joi.string()
+    .trim()
+    .max(500)
+    .when('status', {
+      is: 'REJECTED',
+      then: Joi.required().messages({
+        'any.required':
+          'Rejection reason is required when rejecting a review.',
+      }),
+      otherwise: Joi.forbidden().messages({
+        'any.unknown':
+          'Rejection reason is only allowed when status is REJECTED.',
+      }),
+    }),
+}).unknown(false).required();
