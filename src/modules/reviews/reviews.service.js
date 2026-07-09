@@ -167,7 +167,7 @@ export const updateReview = async (customerId, reviewId, body) => {
   });
 };
 
-export const deleteService = async (customerId, reviewId) => {
+export const deleteService = async (userId, reviewId, isAdmin) => {
   return await executeTransaction(async (client) => {
     const review = await ReviewsModel.findById(reviewId, client);
 
@@ -178,12 +178,14 @@ export const deleteService = async (customerId, reviewId) => {
       );
     }
 
-    // Authorization check
-    if (review.customer_id !== customerId) {
-      throw AppError.forbidden(
-        'Access Denied',
-        'You do not have permission to modify this review.'
-      );
+    if (!isAdmin) {
+      // Authorization check
+      if (review.customer_id !== userId) {
+        throw AppError.forbidden(
+          'Access Denied',
+          'You do not have permission to modify this review.'
+        );
+      }
     }
 
     await ReviewsModel.deleteById(reviewId, client);
@@ -346,7 +348,7 @@ export const getAllReviews = async (query = {}) => {
       if (!product?.exists || product.deleted || !product.active) {
         throw AppError.notFound(
           'Product',
-          'Product not found or unavailable.'
+          'Product not exist or unavailable.'
         );
       }
     }
@@ -356,7 +358,7 @@ export const getAllReviews = async (query = {}) => {
       if (!customer || customer.deleted_at || !customer.is_active) {
         throw AppError.notFound(
           'Customer',
-          'Customer not found or inactive.'
+          'Customer not exit or inactive.'
         );
       }
     }
@@ -417,6 +419,75 @@ export const getAllReviews = async (query = {}) => {
           hasNext: hasMore,
           nextCursor,
         },
+      },
+    };
+  });
+};
+
+export const getReviewDetails = async (reviewId) => {
+  const review = await ReviewsModel.findWithDetails({ id: reviewId });
+
+  if (!review) {
+    throw AppError.notFound(
+      'Review',
+      'The requested review not exist or has been deleted.'
+    );
+  }
+
+  return {
+    success: true,
+    message: 'Data retrieved successfuly',
+    review,
+  };
+};
+
+export const updateReviewStatus = async (adminId, reviewId, body) => {
+  return executeTransaction(async (client) => {
+    const review = await ReviewsModel.findById(reviewId, client);
+
+    if (!review) {
+      throw AppError.notFound(
+        'Review',
+        'Review not exist or has been deleted.'
+      );
+    }
+
+    const updateData = {
+      status: body.status,
+    };
+
+    if (body.status === 'APPROVED') {
+      updateData.approved_by = adminId;
+      updateData.approved_at = new Date();
+      updateData.rejection_reason = null;
+    } else if (body.status === 'REJECTED') {
+      updateData.rejection_reason = body.rejection_reason?.trim();
+      updateData.approved_by = null;
+      updateData.approved_at = null;
+    } else {
+      // PENDING
+      updateData.rejection_reason = null;
+      updateData.approved_by = null;
+      updateData.approved_at = null;
+    }
+
+    const updatedReview = await ReviewsModel.update(
+      { id: reviewId },
+      updateData,
+      client
+    );
+
+    return {
+      success: true,
+      message: `Review has been ${body.status.toLowerCase()} successfully.`,
+      review: {
+        id: updatedReview.id,
+        title: updatedReview.title,
+        rating: updatedReview.rating,
+        status: updatedReview.status,
+        rejection_reason: updatedReview.rejection_reason,
+        approved_at: updatedReview.approved_at,
+        approved_by: updatedReview.approved_by,
       },
     };
   });

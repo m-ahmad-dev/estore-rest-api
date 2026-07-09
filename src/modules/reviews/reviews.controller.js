@@ -24,7 +24,8 @@ export const editReview = asyncWrapper(async (req, res) => {
 export const deleteReview = asyncWrapper(async (req, res) => {
   const result = await reviewServices.deleteService(
     req.user.id,
-    req.params.id
+    req.params.id,
+    false
   );
 
   res.status(200).json(result);
@@ -50,5 +51,30 @@ export const getProductReviews = asyncWrapper(async (req, res) => {
 
 export const getReviewsForAdmin = asyncWrapper(async (req, res) => {
   const result = await reviewServices.getAllReviews(req.query);
+  res.status(200).json(result);
+});
+
+export const getReview = asyncWrapper(async (req, res) => {
+  const result = await reviewServices.getReviewDetails(req.params.id);
+  res.status(200).json(result);
+});
+
+export const updateReviewStatus = asyncWrapper(async (req, res) => {
+  const result = await reviewServices.updateReviewStatus(
+    req.user.id,
+    req.params.id,
+    req.body
+  );
+
+  res.status(200).json(result);
+});
+
+export const deleteReviewAdmin = asyncWrapper(async (req, res) => {
+  const result = await reviewServices.deleteService(
+    req.user.id,
+    req.params.id,
+    true
+  );
+
   res.status(200).json(result);
 });
