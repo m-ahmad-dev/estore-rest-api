@@ -109,3 +109,23 @@ export const getProductReviewsSchema = Joi.object({
     .lowercase()
     .default('desc'),
 }).unknown(false);
+
+export const getAllReviewsSchema = Joi.object({
+  cursor: Joi.string().uuid().optional(),
+  limit: Joi.number().integer().min(1).max(100).default(20),
+  status: Joi.string()
+    .valid('PENDING', 'APPROVED', 'REJECTED')
+    .uppercase()
+    .optional(),
+  rating: Joi.number().integer().min(1).max(5).optional(),
+  product_id: Joi.string().uuid().optional(),
+  customer_id: Joi.string().uuid().optional(),
+  search: Joi.string().trim().allow('', null).optional(),
+  sort: Joi.string()
+    .valid('created_at', 'rating', 'helpful_count')
+    .default('created_at'),
+  order: Joi.string()
+    .valid('asc', 'desc')
+    .lowercase()
+    .default('desc'),
+}).unknown(false);

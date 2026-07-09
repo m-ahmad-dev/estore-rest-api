@@ -122,7 +122,7 @@ export const OrderModel = {
     };
 
     if (cursor) {
-      query.cursor = { id: cursor };
+      query.cursor = cursor;
       query.skip = 1;
     }
 
