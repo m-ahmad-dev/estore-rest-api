@@ -12,12 +12,10 @@ const DEFAULT_SELECTS = {
   status: true,
   rejection_reason: true,
   verified_purchase: true,
-  helpful_count: true,
   created_at: true,
   updated_at: true,
   approved_at: true,
   approved_by: true,
-  author_id: true,
 };
 
 const ReviewsModel = {
