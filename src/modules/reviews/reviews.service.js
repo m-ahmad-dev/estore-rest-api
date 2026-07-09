@@ -4,6 +4,7 @@ import executeTransaction from '../../core/utils/dbTransaction.js';
 import { checkProductExist } from '../products/product.service.js';
 import { findOrderById } from '../orders/order.service.js';
 import { findManyVariantsByIds } from '../products/variants/variants.service.js';
+import { findCustomerById } from '../customer/customer.service.js';
 
 /**
  * Creates a new product review with comprehensive validation and business rules.
@@ -320,6 +321,102 @@ export const findForProduct = async (productId, query = {}) => {
         totalPages: Math.ceil(stats.totalReviews / limit),
         hasNext: page * limit < stats.totalReviews,
         hasPrevious: page > 1,
+      },
+    };
+  });
+};
+
+export const getAllReviews = async (query = {}) => {
+  const {
+    cursor,
+    limit = 20,
+    status,
+    rating,
+    customer_id,
+    product_id,
+    search,
+    sort = 'created_at',
+    order = 'desc',
+  } = query;
+
+  return executeTransaction(async (client) => {
+    // Validate filters only if provided
+    if (product_id) {
+      const product = await checkProductExist(product_id, client);
+      if (!product?.exists || product.deleted || !product.active) {
+        throw AppError.notFound(
+          'Product',
+          'Product not found or unavailable.'
+        );
+      }
+    }
+
+    if (customer_id) {
+      const customer = await findCustomerById(customer_id, client);
+      if (!customer || customer.deleted_at || !customer.is_active) {
+        throw AppError.notFound(
+          'Customer',
+          'Customer not found or inactive.'
+        );
+      }
+    }
+
+    const rows = await ReviewsModel.findAllForAdmin(
+      {
+        cursor,
+        limit: parseInt(limit),
+        status,
+        rating: rating ? parseInt(rating) : undefined,
+        customer_id,
+        product_id,
+        search,
+        sort,
+        order,
+      },
+      client
+    );
+
+    const hasMore = rows.length > limit;
+    const reviews = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore
+      ? reviews[reviews.length - 1].id
+      : null;
+
+    const totalReviews = await ReviewsModel.countBy(
+      undefined,
+      client
+    );
+
+    return {
+      success: true,
+      data: {
+        reviews: reviews.map((r) => ({
+          id: r.id,
+          title: r.title,
+          comment: r.comment,
+          rating: r.rating,
+          status: r.status,
+          helpful_count: r.helpful_count,
+          verified_purchase: r.verified_purchase,
+          created_at: r.created_at,
+          product: {
+            id: r.product_id,
+            name: r.product_name,
+            slug: r.product_slug,
+          },
+          customer: {
+            id: r.customer_id,
+            first_name: r.first_name,
+            last_name: r.last_name,
+            email: r.customer_email,
+          },
+        })),
+        pagination: {
+          limit: parseInt(limit),
+          total: totalReviews,
+          hasNext: hasMore,
+          nextCursor,
+        },
       },
     };
   });

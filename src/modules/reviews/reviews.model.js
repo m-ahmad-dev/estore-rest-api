@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import prisma from '../../core/configs/db.js';
 
 const DEFAULT_SELECTS = {
@@ -104,6 +105,79 @@ const ReviewsModel = {
         : 0,
       totalReviews: result._count.id,
     };
+  },
+
+  // Admin: Fetch reviews with advanced filtering + Full-Text Search
+  findAllForAdmin: async (options = {}, db = prisma) => {
+    const {
+      cursor,
+      limit = 20,
+      status,
+      rating,
+      customer_id,
+      product_id,
+      search,
+      sort = 'created_at',
+      order = 'desc',
+    } = options;
+
+    const conditions = [];
+
+    // Dynamic WHERE conditions
+    if (status) {
+      conditions.push(Prisma.sql`r.status = ${status}`);
+    }
+    if (rating !== undefined) {
+      conditions.push(Prisma.sql`r.rating = ${rating}`);
+    }
+    if (customer_id) {
+      conditions.push(Prisma.sql`r.customer_id = ${customer_id}`);
+    }
+    if (product_id) {
+      conditions.push(Prisma.sql`r.product_id = ${product_id}`);
+    }
+    if (search?.trim()) {
+      conditions.push(
+        Prisma.sql`r.search_vector @@ plainto_tsquery('english', ${search.trim()})`
+      );
+    }
+    if (cursor) {
+      conditions.push(Prisma.sql`r.id > ${cursor}`);
+    }
+
+    const whereClause = conditions.length
+      ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+      : Prisma.empty;
+
+    const sortDirection =
+      order.toUpperCase() === 'ASC'
+        ? Prisma.sql`ASC`
+        : Prisma.sql`DESC`;
+
+    return await db.$queryRaw`
+      SELECT 
+        r.id,
+        r.title,
+        r.comment,
+        r.status,
+        r.rating,
+        r.created_at,
+        r.helpful_count,
+        r.verified_purchase,
+        p.id as product_id,
+        p.name as product_name,
+        p.slug as product_slug,
+        c.id as customer_id,
+        c.first_name,
+        c.last_name,
+        c.email as customer_email
+      FROM "reviews" r
+      JOIN "products" p ON p.id = r.product_id
+      JOIN "customers" c ON c.id = r.customer_id
+      ${whereClause}
+      ORDER BY r.${Prisma.raw(sort)} ${sortDirection}, r.id ASC
+      LIMIT ${limit + 1}
+    `;
   },
 };
 

@@ -47,3 +47,8 @@ export const getProductReviews = asyncWrapper(async (req, res) => {
 
   res.status(200).json(result);
 });
+
+export const getReviewsForAdmin = asyncWrapper(async (req, res) => {
+  const result = await reviewServices.getAllReviews(req.query);
+  res.status(200).json(result);
+});

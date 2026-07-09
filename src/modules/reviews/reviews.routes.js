@@ -2,6 +2,7 @@ import express from 'express';
 import auth from '../../core/middlewares/auth.middleware.js';
 import validate from '../../core/middlewares/input_validate.middleware.js';
 import validateUUID from '../../core/middlewares/valid_uuid.middleware.js';
+import authorizePermission from '../../core/middlewares/pbac.middleware.js';
 import * as reviewsController from './reviews.controller.js';
 import * as reviewSchema from './reviews.validation.js';
 
@@ -42,6 +43,16 @@ router.delete(
   validateUUID,
   auth,
   reviewsController.deleteReview
+);
+
+// Admin Access routes
+
+router.get(
+  '/admin/reviews',
+  auth,
+  authorizePermission('reviews.view'),
+  validate(reviewSchema.getAllReviewsSchema, 'query'),
+  reviewsController.getReviewsForAdmin
 );
 
 export default router;
