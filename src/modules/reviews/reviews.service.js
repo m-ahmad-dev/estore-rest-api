@@ -104,7 +104,6 @@ export const createProductReview = async (
         title: savedReview.title,
         comment: savedReview.comment,
         status: savedReview.status,
-        helpful_count: savedReview.helpful_count,
         created_at: savedReview.created_at,
       },
     };
@@ -160,7 +159,6 @@ export const updateReview = async (customerId, reviewId, body) => {
         title: updatedReview.title,
         comment: updatedReview.comment,
         status: updatedReview.status,
-        helpful_count: updatedReview.helpful_count,
         updated_at: updatedReview.updated_at,
       },
     };
@@ -241,7 +239,6 @@ export const getCustomerReviews = async (customerId, query = {}) => {
         rejection_reason:
           r.status === 'REJECTED' ? r.rejection_reason : null,
         verified_purchase: r.verified_purchase,
-        helpful_count: r.helpful_count,
         created_at: r.created_at,
         updated_at: r.updated_at,
         approved_at: r.approved_at,
@@ -303,7 +300,6 @@ export const findForProduct = async (productId, query = {}) => {
         title: r.title,
         comment: r.comment,
         verified_purchase: r.verified_purchase,
-        helpful_count: r.helpful_count,
         created_at: r.created_at,
         customer: r.customer
           ? {
@@ -398,7 +394,6 @@ export const getAllReviews = async (query = {}) => {
           comment: r.comment,
           rating: r.rating,
           status: r.status,
-          helpful_count: r.helpful_count,
           verified_purchase: r.verified_purchase,
           created_at: r.created_at,
           product: {
