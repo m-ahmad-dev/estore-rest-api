@@ -16,13 +16,6 @@ const dataExtractors = {
 
 const validate = (targetSchema, source = 'body') => {
   return async (req, res, next) => {
-    // If req.body doesn't exist or is empty
-    if (!req.body || Object.keys(req.body).length === 0) {
-      return next(
-        AppError.badRequest('Request body cannot be empty')
-      );
-    }
-
     const data = (dataExtractors[source] || dataExtractors.body)(req);
     const schema =
       typeof targetSchema === 'function'
