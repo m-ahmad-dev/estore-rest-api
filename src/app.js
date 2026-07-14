@@ -62,7 +62,7 @@ app.use(passport.initialize());
 app.use(routes);
 
 // 404 handler for undefined routes
-app.all('*', (req, res, next) => {
+app.all('/{*any}', (req, res, next) => {
   next(AppError.routeNotFound(req.originalUrl));
 });
 

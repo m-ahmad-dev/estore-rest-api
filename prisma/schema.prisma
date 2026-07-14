@@ -120,20 +120,21 @@ model categories {
 
 /// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
 model products {
-  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  category_id String             @db.Uuid
-  name        String             @db.VarChar(255)
-  slug        String             @unique @db.VarChar(255)
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  category_id String    @db.Uuid
+  name        String    @db.VarChar(255)
+  slug        String    @unique @db.VarChar(255)
   description String?
-  base_price  Decimal            @db.Decimal(10, 2)
-  is_active   Boolean?           @default(true)
-  created_at  DateTime?          @default(now()) @db.Timestamp(6)
-  deleted_at  DateTime?          @db.Timestamp(6)
-  images      product_images?
-  variants    product_variants[]
-  category    categories         @relation(fields: [category_id], references: [id])
-  reviews     reviews[]
-  wishlists   wishlists[]
+  base_price  Decimal   @db.Decimal(10, 2)
+  is_active   Boolean?  @default(true)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  deleted_at  DateTime? @db.Timestamp(6)
+
+  images    product_images[]
+  variants  product_variants[]
+  category  categories         @relation(fields: [category_id], references: [id])
+  reviews   reviews[]
+  wishlists wishlists[]
 
   @@index([category_id], map: "idx_products_category")
   @@index([slug], map: "idx_products_slug")
@@ -145,14 +146,15 @@ model products {
 
 model product_images {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  product_id String   @unique(map: "one_primary_image_per_product", where: raw("(is_primary = true)")) @db.Uuid
+  product_id String   @db.Uuid
   url        String?
   is_primary Boolean  @default(false)
   sort_order Int      @default(0)
   alt_text   String?  @db.VarChar(255)
   created_at DateTime @default(now())
   key        String
-  product    products @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  product products @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@unique([product_id, key])
   @@index([product_id])
