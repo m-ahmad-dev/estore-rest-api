@@ -11,9 +11,7 @@ import * as orderSchema from './order.validation.js';
 const router = express.Router();
 const adminRouter = express.Router();
 
-/* ==========================================================================
-   PUBLIC / CUSTOMER ROUTES
-   ========================================================================== */
+/* ==== Public and Customer Routes ==== */
 
 // Handle dynamic checkout validation elegantly via split endpoints or execution wrapper
 router.post(
@@ -59,7 +57,7 @@ router.patch(
   orderControllers.cancelOrder
 );
 
-// ADMIN ROUTES (Isolated Scoped Router)
+// === ADMIN ROUTES (Isolated Scoped Router) === //
 
 adminRouter.use(auth); 
 

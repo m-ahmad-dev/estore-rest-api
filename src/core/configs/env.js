@@ -33,6 +33,9 @@ const env = {
   B2_APP_KEY: process.env.B2_APP_KEY,
   B2_BUCKET_NAME: process.env.B2_BUCKET_NAME,
   IMAGE_BASE_URL: process.env.IMAGE_BASE_URL,
+
+  // Postman Docs URL
+  POSTMAN_DOCS_URL: process.env.POSTMAN_DOCS_URL,
 };
 
 export default env;

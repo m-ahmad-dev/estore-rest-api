@@ -52,7 +52,7 @@ async function seedOwner() {
       });
     });
 
-    console.log(
+    console.info(
       chalk.greenBright(`Owner seeded successfully → `, chalk.green(email))
     );
   } catch (error) {

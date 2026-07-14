@@ -75,7 +75,7 @@ export const cancelStripePaymentIntent = async (transactionId) => {
       error.message &&
       error.message.includes('has a status of canceled')
     ) {
-      console.log(
+      console.info(
         `[STRIPE INFO] PaymentIntent ${transactionId} was already canceled or expired in Stripe sandbox.`
       );
 

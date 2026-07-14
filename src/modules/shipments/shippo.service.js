@@ -116,7 +116,7 @@ export const purchaseLabelAsync = async (rateObjectId) => {
       !transactionData.label_url) &&
     retries > 0
   ) {
-    console.log(
+    console.info(
       `[SHIPPO ASYNC] Label is queued/processing. Retrying... (${retries} attempts left)`
     );
     await new Promise((resolve) => setTimeout(resolve, 2000));
