@@ -10,11 +10,14 @@ COPY package*.json ./
 # 4. Install dependencies
 RUN npm install
 
-# 5. Copy the rest of the application code to the working directory
+# 5. Generate Prisma client
+RUN npx prisma generate
+
+# 6. Copy the rest of the application code to the working directory
 COPY . .
 
-# 6. Expose port 3000
+# 8. Expose port 3000
 EXPOSE 3000
 
-# 7. Start the application
+# 9. Start the application
 CMD ["npm", "start"]
