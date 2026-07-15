@@ -42,7 +42,3 @@ node_modules/
 .idea/
 *.swp
 *.swo
-
-# Ignore local files that should not be pushed
-dev.js
-routes.md
