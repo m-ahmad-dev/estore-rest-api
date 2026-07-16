@@ -31,7 +31,6 @@ productRoutes.get(
 
 productRoutes.get(
   '/products/:slug',
-  validateUUID,
   productControllers.getProductBySlug
 );
 
