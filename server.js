@@ -1,6 +1,7 @@
 import app from './src/app.js';
 import env from './src/core/configs/env.js';
 import startCleanupJob from './src/core/jobs/cleanup.jobs.js';
+import startShipmentRetryJob from './src/core/jobs/retry-shipment.jobs.js';
 
 const PORT = env.PORT || 3000;
 
@@ -11,6 +12,7 @@ const startServer = async () => {
   try {
     // Initialize background jobs
     startCleanupJob();
+    startShipmentRetryJob();
 
     const server = app.listen(PORT, () => {
       console.info(`Server running on http://localhost:${PORT}`);

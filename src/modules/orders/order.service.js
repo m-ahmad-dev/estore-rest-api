@@ -26,6 +26,8 @@ const generateOrderNumber = () => {
   return `ORD-${timestamp}-${hash}`;
 };
 
+const toCents = (val) => Math.round((parseFloat(val) || 0) * 100);
+
 const prepareCustomerInfo = async (user) => {
   if (!user?.customer_id) return null;
 
@@ -289,10 +291,15 @@ const buildOrderResponsePayload = (order, scope = 'public') => {
 
 // Main Services //
 
+/**
+ * Processes checkout context, reserves inventory atomically, creates order records,
+ * creates initial shipment audit trails, and initializes payment intents.
+ */
 export const createOrderService = async (user, data) => {
+  // Resolve address and customer details prior to starting database locks
   const verifiedAddress = await resolveVerifiedAddress(user, data);
   const customerInfo = await prepareCustomerInfo(user);
-  const isRegistered = !!user?.customer_id;
+  const isRegistered = Boolean(user?.customer_id);
 
   const checkoutContext = {
     address: verifiedAddress,
@@ -303,6 +310,7 @@ export const createOrderService = async (user, data) => {
     },
   };
 
+  // Retrieve active cart items and calculate real-time shipping rates
   const cartData = await cartService.resolveCartForCheckout(
     user,
     checkoutContext
@@ -313,11 +321,27 @@ export const createOrderService = async (user, data) => {
     totalWeight: cartData.totalWeight || 1,
   });
 
-  const calculatedTotal =
-    parseFloat(cartData.subtotal || 0) -
-    parseFloat(cartData.discount || 0) +
-    shippingInfo.fee;
+  // Calculate financials in integer cents to eliminate rounding precision issues
+  const subtotalCents = toCents(cartData.subtotal);
+  const discountCents = toCents(cartData.discount);
+  const shippingFeeCents = toCents(shippingInfo.fee);
 
+  const totalAmountCents =
+    subtotalCents - discountCents + shippingFeeCents;
+
+  if (totalAmountCents < 0) {
+    throw AppError.badRequest('Invalid total amount calculation.');
+  }
+
+  // Convert normalized cent values back to standard unit decimal values for database storage
+  const subtotal = subtotalCents / 100;
+  const discountAmount = discountCents / 100;
+  const shippingCost = shippingFeeCents / 100;
+  const totalAmount = totalAmountCents / 100;
+
+  let initialShipment = null;
+
+  // Execute database writes inside an isolated atomic transaction
   const { order } = await executeTransaction(async (client) => {
     const orderPayload = {
       order_number: generateOrderNumber(),
@@ -331,10 +355,10 @@ export const createOrderService = async (user, data) => {
       status: 'PENDING',
       payment_method: data.payment_method,
       payment_status: 'UNPAID',
-      subtotal: cartData.subtotal,
-      discount_amount: cartData.discount,
-      shipping_cost: shippingInfo.fee,
-      total_amount: calculatedTotal,
+      subtotal,
+      discount_amount: discountAmount,
+      shipping_cost: shippingCost,
+      total_amount: totalAmount,
     };
 
     const newOrder = await OrderModel.create(orderPayload, client);
@@ -347,28 +371,37 @@ export const createOrderService = async (user, data) => {
       variant_options: item.variant.attributes,
       quantity: item.quantity,
       unit_price: item.variant.price,
-      total_price: item.quantity * item.variant.price,
+      total_price:
+        (toCents(item.variant.price) * item.quantity) / 100,
     }));
 
     await OrderItemModel.insertMany(orderItemPayloads, client);
 
+    // Reserve stock atomically at the database engine level to prevent over-selling
     for (const item of cartData.items) {
-      await prodVariantService.updateVariantStockService(
-        item.variant.product_id,
-        item.variant_id,
-        { quantity: item.quantity, operation: 'stock.reserve' },
-        client
-      );
+      const reserved =
+        await prodVariantService.atomicReserveStockOperation(
+          item.variant_id,
+          item.quantity,
+          client
+        );
+
+      if (!reserved) {
+        throw AppError.badRequest(
+          `Insufficient stock for '${item.product_name || item.variant.sku}'.`
+        );
+      }
     }
 
-    await shipmentService.createShipmentRecord(
+    // Persist an initial shipment record with PENDING_LABEL status for recovery tracking
+    initialShipment = await shipmentService.createShipmentRecord(
       {
         order_id: newOrder.id,
         carrier: shippingInfo.carrier,
         transaction_id: null,
         tracking_number: null,
         label_url: null,
-        status: 'PROCESSING',
+        status: 'PENDING_LABEL',
       },
       client
     );
@@ -376,39 +409,25 @@ export const createOrderService = async (user, data) => {
     return { order: newOrder };
   });
 
+  // Attempt asynchronous shipping label purchase; failures remain recoverable via cron job
   fireBackgroundTask(async () => {
     try {
-      console.log(
-        `[BACKGROUND TASK] Purchasing Shippo Label for Order: ${order.id}`
-      );
       const labelDetails = await shippoService.purchaseLabelAsync(
         shippingInfo.rateObjectId
       );
-      const currentShipment =
-        await shipmentService.findShipmentByOrderId(order.id);
 
-      if (currentShipment) {
-        await shipmentService.updateShippingRecord(
-          currentShipment.id,
-          {
-            transaction_id: labelDetails.transactionId,
-            tracking_number: labelDetails.trackingNumber,
-            label_url: labelDetails.labelUrl,
-            status: 'PROCESSING',
-          }
-        );
-        console.log(
-          `[BACKGROUND TASK SUCCESS] Tracking sync'd for Order: ${order.id}`
-        );
-      }
+      await shipmentService.updateShippingRecord(initialShipment.id, {
+        transaction_id: labelDetails.transactionId,
+        tracking_number: labelDetails.trackingNumber,
+        label_url: labelDetails.labelUrl,
+        status: 'PROCESSING',
+      });
     } catch (err) {
-      console.error(
-        `[BACKGROUND TASK ERROR] Shippo labeling failed for Order ${order.id}:`,
-        err
-      );
+      console.error(`[SHIPPO LABEL ERROR] Order ${order.id}:`, err);
     }
   });
 
+  // Initialize payment gateway intent if credit card is selected
   let paymentIntent = null;
   if (data.payment_method === 'CARD') {
     paymentIntent = await stripeService.processOrderPaymentIntent(
@@ -416,6 +435,7 @@ export const createOrderService = async (user, data) => {
     );
   }
 
+  // Clear customer or session cart following successful order creation
   await cartService.clearCart(user);
 
   return {
@@ -435,10 +455,10 @@ export const createOrderService = async (user, data) => {
         ? { clientSecret: paymentIntent.clientSecret }
         : null,
       summary: {
-        subtotal: cartData.subtotal,
-        discount: cartData.discount,
-        shipping: shippingInfo.fee,
-        total: order.total_amount,
+        subtotal,
+        discount: discountAmount,
+        shipping: shippingCost,
+        total: totalAmount,
       },
     },
   };

@@ -26,6 +26,7 @@ const env = {
   EMAIL_FROM: process.env.GMAIL_USER,
   // crons cleanup configs:
   CLEANUP_SCHEDULE: process.env.CLEANUP_SCHEDULE,
+  SHIPMENT_RETRY_SCHEDULE: process.env.SHIPMENT_RETRY_SCHEDULE,
   // Backblaze Credentials:
   B2_ENDPOINT: process.env.B2_ENDPOINT,
   B2_REGION: process.env.B2_REGION,

@@ -30,7 +30,7 @@ router.use('/api', apiLimiter);
 router.get('/', (req, res) => {
   res.status(200).json({
     status: 'success',
-    message: 'Welcome to the E-Commerce API Gateway',
+    message: 'Welcome to the E-Store API',
     meta: {
       version: '1.0.0',
       environment: env.NODE_ENV || 'development',
@@ -79,9 +79,7 @@ router.get('/health', async (req, res) => {
 // Token refresh (outside versioned router for simplicity)
 router.post('/api/v1/refresh-token', refreshAccessToken);
 
-// =============================================
-// Versioned API router
-// =============================================
+// Versioned API router //
 
 const v1Router = express.Router();
 

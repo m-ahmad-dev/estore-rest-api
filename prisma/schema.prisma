@@ -456,6 +456,7 @@ enum PaymentStatus {
 }
 
 enum ShipmentStatus {
+  PENDING_LABEL
   PROCESSING
   SHIPPED
   DELIVERED

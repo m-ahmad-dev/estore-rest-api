@@ -1,14 +1,19 @@
 import Stripe from 'stripe';
-import executeTransaction from '../../core/utils/dbTransaction.js';
 import * as orderService from '../orders/order.service.js';
-import * as variantService from '../products/variants/variants.service.js';
+import * as prodVariantServices from '../../modules/products/variants/variants.service.js';
 import { updatePaymentByTransactionId } from './payment.service.js';
+import executeTransaction from '../../core/utils/dbTransaction.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+/**
+ * Executes payment success handling inside an active DB transaction
+ */
 const handleSuccessfulPayment = async (paymentIntent, client) => {
+  const orderId = paymentIntent.metadata?.order_id;
+
   await orderService.updateOrderStatus(
-    paymentIntent.metadata.order_id,
+    orderId,
     { status: 'PROCESSING', payment_status: 'PAID' },
     client
   );
@@ -20,12 +25,12 @@ const handleSuccessfulPayment = async (paymentIntent, client) => {
   );
 
   const orderItems = await orderService.findItemsByOrderId(
-    paymentIntent.metadata.order_id,
+    orderId,
     client
   );
 
   for (const item of orderItems) {
-    await variantService.decreaseProductStockAndReverved(
+    await prodVariantServices.decreaseProductStockAndReverved(
       item.variant_id,
       item.quantity,
       client
@@ -33,9 +38,14 @@ const handleSuccessfulPayment = async (paymentIntent, client) => {
   }
 };
 
+/**
+ * Executes payment failure/cancellation handling inside an active DB transaction
+ */
 const handleFailedPayment = async (paymentIntent, client) => {
+  const orderId = paymentIntent.metadata?.order_id;
+
   await orderService.updateOrderStatus(
-    paymentIntent.metadata.order_id,
+    orderId,
     { status: 'CANCELLED', payment_status: 'UNPAID' },
     client
   );
@@ -47,12 +57,12 @@ const handleFailedPayment = async (paymentIntent, client) => {
   );
 
   const orderItems = await orderService.findItemsByOrderId(
-    paymentIntent.metadata.order_id,
+    orderId,
     client
   );
 
   for (const item of orderItems) {
-    await variantService.releaseProductReservation(
+    await prodVariantServices.releaseProductReservation(
       item.variant_id,
       item.quantity,
       client
@@ -60,6 +70,9 @@ const handleFailedPayment = async (paymentIntent, client) => {
   }
 };
 
+/**
+ * Main Stripe Webhook Controller
+ */
 export const handleStripeWebhook = async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
@@ -72,7 +85,7 @@ export const handleStripeWebhook = async (req, res) => {
     );
   } catch (err) {
     console.warn(
-      `Stripe webhook signature verification failed: ${err.message}`
+      `Webhook signature verification failed: ${err.message}`
     );
     return res.status(400).json({
       success: false,
@@ -84,9 +97,6 @@ export const handleStripeWebhook = async (req, res) => {
   const orderId = paymentIntent.metadata?.order_id;
 
   if (!orderId) {
-    console.warn(
-      'Stripe webhook received without order_id in metadata.'
-    );
     return res.status(400).json({
       success: false,
       message: 'Missing order_id in payment intent metadata.',
@@ -94,6 +104,7 @@ export const handleStripeWebhook = async (req, res) => {
   }
 
   try {
+    // Process inside a single database transaction
     if (event.type === 'payment_intent.succeeded') {
       await executeTransaction(async (client) => {
         await handleSuccessfulPayment(paymentIntent, client);
@@ -105,16 +116,16 @@ export const handleStripeWebhook = async (req, res) => {
       await executeTransaction(async (client) => {
         await handleFailedPayment(paymentIntent, client);
       });
-      console.info(
-        `Payment failed/canceled for Order ID: ${orderId}. Stock released.`
-      );
     }
 
-    res.json({ received: true });
+    return res.json({ received: true });
   } catch (error) {
-    console.error('Webhook processing failed:', error);
-    // Return 500 so Stripe retries
-    res.status(500).json({
+    console.error(
+      `[WEBHOOK ERROR] Failed to process event ${event.type} for Order ${orderId}:`,
+      error
+    );
+    // Returning 500 tells Stripe to retry delivering the webhook later
+    return res.status(500).json({
       success: false,
       message: 'Internal server error while processing webhook.',
     });

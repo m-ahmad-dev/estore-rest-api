@@ -397,3 +397,15 @@ export const restoreProductStock = async (
     client
   );
 };
+
+export const atomicReserveStockOperation = async (
+  variantId,
+  quantity,
+  client
+) => {
+  return await ProdVariantsModel.atomicReserveStock(
+    variantId,
+    quantity,
+    client
+  );
+};

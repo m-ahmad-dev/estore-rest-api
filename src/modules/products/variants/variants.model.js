@@ -103,9 +103,13 @@ const VariantModel = {
   countByProduct: async (productId, db = prisma) =>
     db.product_variants.count({ where: { product_id: productId } }),
 
-  decrementStockAndReservation: async (id, quantity, db = prisma) => {
+  decrementStockAndReservation: async (
+    variantId,
+    quantity,
+    db = prisma
+  ) => {
     return await db.product_variants.update({
-      where: { id },
+      where: { id: variantId },
       data: {
         reserved_quantity: { decrement: quantity },
         stock_quantity: { decrement: quantity },
@@ -113,9 +117,9 @@ const VariantModel = {
     });
   },
 
-  releaseReservedStock: async (id, quantity, db = prisma) => {
+  releaseReservedStock: async (variantId, quantity, db = prisma) => {
     return await db.product_variants.update({
-      where: { id },
+      where: { id: variantId },
       data: {
         reserved_quantity: { decrement: quantity },
       },
@@ -129,6 +133,20 @@ const VariantModel = {
         stock_quantity: { increment: quantity },
       },
     });
+  },
+
+  atomicReserveStock: async (variantId, quantity, db = prisma) => {
+    // Executes a single locked SQL query inside the database
+    const updatedCount = await db.$executeRaw`
+      UPDATE "product_variants"
+      SET "reserved_quantity" = COALESCE("reserved_quantity", 0) + ${quantity}
+      WHERE "id" = ${variantId}
+        AND ("stock_quantity" - COALESCE("reserved_quantity", 0)) >= ${quantity}
+        AND "deleted_at" IS NULL
+    `;
+
+    // Returns true if stock was successfully reserved, false if out of stock
+    return updatedCount > 0;
   },
 };
 
