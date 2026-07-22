@@ -912,9 +912,10 @@ For the complete collection with all endpoints, request examples, and environmen
 
 Backend Software Developer passionate about building scalable, production-ready REST APIs with Node.js enviroment. Learning Scalable Systems & Architecture.
 
-- **GitHub:** https://github.com/ahmadmughal6343
+- **Email:** [m.ahmad.devio@gmail.com](mailto:m.ahmad.devio@gmail.com)
+- **GitHub:** https://github.com/m-ahmad-dev
 - **LinkedIn:** https://www.linkedin.com/in/muhammad-ahmad-6b6967300
-- **Resume/CV:** _Coming Soon_
+- **Resume/CV:** [View](https://drive.google.com/file/d/1jTS74tjrai54ji8lws7OzyJ9z-nL4ALu/view)
 - **Portfolio:** _Coming Soon_
 
 ## License
