@@ -1,9 +1,10 @@
 import jwt from "jsonwebtoken";
 import env from "../configs/env.js";
 import AppError from "../utils/error.utils.js";
+import { extractAccessToken } from "../utils/accessToken.utils.js";
 
 const auth = (req, res, next) => {
-  const token = req.cookies.accessToken;
+  const token = extractAccessToken(req);
 
   if (!token) {
     return next(AppError.unauthorized("No access token provided"));

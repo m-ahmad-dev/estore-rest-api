@@ -1,9 +1,10 @@
 import jwt from 'jsonwebtoken';
 import env from '../configs/env.js';
+import { extractAccessToken } from '../utils/accessToken.utils.js';
 
 const softAuth = (req, res, next) => {
   try {
-    const accessToken = req.cookies?.accessToken;
+    const accessToken = extractAccessToken(req);
 
     if (!accessToken) {
       req.user = null;

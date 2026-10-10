@@ -7,11 +7,25 @@ const TOKEN_EXPIRATION = {
   REFRESH: 14 * 24 * 60 * 60 * 1000, // 14 days
 };
 
+/**
+ * SameSite policy (env: COOKIE_SAME_SITE = lax | strict | none, default lax)
+ * - lax/strict : frontend and API are SAME-SITE (same registrable domain, e.g.
+ *                admin.example.com + api.example.com) or served via a reverse proxy.
+ * - none       : frontend and API are on DIFFERENT sites (e.g. *.vercel.app +
+ *                *.railway.app). Browsers then REQUIRE `Secure`; it is forced below.
+ */
+const SAME_SITE = { lax: 'Lax', strict: 'Strict', none: 'None' };
+const sameSite = SAME_SITE[(env.COOKIE_SAME_SITE || 'lax').toLowerCase()] || 'Lax';
+
+// Optional, e.g. ".example.com" to share cookies between subdomains.
+const cookieDomain = env.COOKIE_DOMAIN?.trim() || undefined;
+
 // Base cookie configuration
 export const getBaseCookieConfig = (overrides = {}) => ({
   httpOnly: true,
-  secure: isProduction,
-  sameSite: 'Lax',
+  secure: isProduction || sameSite === 'None',
+  sameSite,
+  ...(cookieDomain ? { domain: cookieDomain } : {}),
   ...overrides,
 });
 
