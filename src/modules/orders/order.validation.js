@@ -6,7 +6,7 @@ const addressSchema = Joi.object({
   city: Joi.string().min(2).max(120).required(),
   street: Joi.string().trim().min(2).max(500).required(),
   apartment: Joi.string().trim().min(2).max(500).optional(),
-  postal_code: Joi.string().pattern(/^\d+$/).optional(),
+  postal_code: Joi.string().pattern(/^\d+$/).required(),
 })
   .unknown(false)
   .required();
@@ -126,7 +126,7 @@ export const updateOrderPaymentRecordSchema = Joi.object({
 })
   .unknown(false)
   .required();
-  
+
 export const updateOrderShipmentRecordSchema = Joi.object({
   status: Joi.string()
     .valid('PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED')
@@ -134,3 +134,14 @@ export const updateOrderShipmentRecordSchema = Joi.object({
 })
   .unknown(false)
   .required();
+
+
+export const retryOrderPaymentSchema = Joi.object({
+  email: Joi.string().trim().email().lowercase().optional(),
+  order_number: Joi.string().trim().max(50).optional(),
+})
+  .unknown(false)
+  .required();
+
+
+export const refundOrderSchema = Joi.object({}).unknown(false).required();

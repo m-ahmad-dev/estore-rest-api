@@ -1,24 +1,24 @@
-import passport from "passport";
-import express from "express";
-import validate from "../../core/middlewares/input_validate.middleware.js";
-import env from "../../core/configs/env.js";
-import auth from "../../core/middlewares/auth.middleware.js";
-import authorizeRoles from "../../core/middlewares/rbac.middleware.js";
+import passport from 'passport';
+import express from 'express';
+import validate from '../../core/middlewares/input_validate.middleware.js';
+import auth from '../../core/middlewares/auth.middleware.js';
+import authorizeRoles from '../../core/middlewares/rbac.middleware.js';
 import {
   isAdminActive,
   isCustomerActive,
-} from "../../core/middlewares/check.middleware.js";
+} from '../../core/middlewares/check.middleware.js';
+import { getStorefrontUrl } from '../../core/utils/url.utils.js';
 import {
   forgotPasswordLimiter,
   loginLimiter,
   resetPasswordLimiter,
-} from "../../core/middlewares/rateLimiter.js";
+} from '../../core/middlewares/rateLimiter.js';
 import {
   forgotPasswordSchema,
   loginSchema,
   registerSchema,
   resetPasswordSchema,
-} from "../customer/customer.validations.js";
+} from '../customer/customer.validations.js';
 import {
   forgotPassword,
   googleAuthCallback,
@@ -27,56 +27,60 @@ import {
   logoutAdmin,
   logoutCustomer,
   resetPassword,
-} from "./auth.controller.js";
-import { registerCustomer } from "../customer/customer.controller.js";
+} from './auth.controller.js';
+import { registerCustomer } from '../customer/customer.controller.js';
 
 const authRoutes = express.Router();
 
 // --- PUBLIC ROUTES ---
 authRoutes.post(
-  "/admin/login",
+  '/admin/login',
   loginLimiter,
   validate(loginSchema),
-  loginAdmin,
+  loginAdmin
 );
-authRoutes.post("/login", validate(loginSchema), loginCustomer);
+authRoutes.post('/login', validate(loginSchema), loginCustomer);
 authRoutes.post(
-  "/forgot-password",
+  '/forgot-password',
   forgotPasswordLimiter,
   validate(forgotPasswordSchema),
-  forgotPassword,
+  forgotPassword
 );
 authRoutes.post(
-  "/reset-password",
+  '/reset-password',
   resetPasswordLimiter,
   validate(resetPasswordSchema),
-  resetPassword,
+  resetPassword
 );
 // Customers OAuth routes.
 authRoutes.get(
-  "/google",
-  passport.authenticate("google", { scope: ["profile", "email"] }),
+  '/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 authRoutes.get(
-  "/google/callback",
-  passport.authenticate("google", {
+  '/google/callback',
+  passport.authenticate('google', {
     session: false, // Using JWTs, so we don't need sessions.
-    failureRedirect: `${env.FRONTEND_URL}/auth/login?error=google_failed`,
+    ...(getStorefrontUrl() ? { failureRedirect: `${getStorefrontUrl()}/auth/login?error=google_failed` } : {}),
   }),
-  googleAuthCallback,
+  googleAuthCallback
 );
-authRoutes.post("/register", validate(registerSchema), registerCustomer);
+authRoutes.post(
+  '/register',
+  validate(registerSchema),
+  registerCustomer
+);
 
 // --- AUTH REQUIRED ---
 authRoutes.use(auth);
 
 // --- LOGOUT ---
 authRoutes.post(
-  "/admin/logout",
-  authorizeRoles("admin", "owner"),
+  '/admin/logout',
+  authorizeRoles('admin', 'owner'),
   isAdminActive,
-  logoutAdmin,
+  logoutAdmin
 );
-authRoutes.post("/logout", isCustomerActive, logoutCustomer);
+authRoutes.post('/logout', isCustomerActive, logoutCustomer);
 
 export default authRoutes;

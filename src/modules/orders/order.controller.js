@@ -102,3 +102,19 @@ export const cancelOrderAdmin = asyncWrapper(async (req, res) => {
 
   res.status(200).json(result);
 });
+
+
+export const createOrderPaymentSession = asyncWrapper(async (req, res) => {
+  const result = await orderServices.createOrderPaymentSessionService(
+    req.params.id,
+    req.user,
+    req.body
+  );
+  res.status(200).json(result);
+});
+
+
+export const refundOrderPayment = asyncWrapper(async (req, res) => {
+  const result = await orderServices.refundOrderPaymentService(req.params.id);
+  res.status(200).json(result);
+});

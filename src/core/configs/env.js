@@ -16,7 +16,10 @@ const env = {
   OWNER_PASSWORD: process.env.OWNER_PASSWORD,
   OWNER_NAME: process.env.OWNER_NAME,
   // CORS
-  FRONTEND_URL: process.env.FRONTEND_URL,
+  // Comma-separated list of browser origins allowed by CORS.
+  FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173,http://localhost:5174',
+  STORE_FRONTEND_URL: process.env.STORE_FRONTEND_URL,
+  ADMIN_FRONTEND_URL: process.env.ADMIN_FRONTEND_URL || 'http://localhost:5174',
   // Google auth cedentials:
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
@@ -33,7 +36,11 @@ const env = {
   B2_KEY_ID: process.env.B2_KEY_ID,
   B2_APP_KEY: process.env.B2_APP_KEY,
   B2_BUCKET_NAME: process.env.B2_BUCKET_NAME,
-  IMAGE_BASE_URL: process.env.IMAGE_BASE_URL,
+  IMAGE_BASE_URL: process.env.IMAGE_BASE_URL || process.env.IMAGES_BASE_URL,
+  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+  STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+  STRIPE_CURRENCY: (process.env.STRIPE_CURRENCY || 'pkr').toLowerCase(),
+  MOCK_SHIPPING_FEE: process.env.MOCK_SHIPPING_FEE || '0',
 
   // Postman Docs URL
   POSTMAN_DOCS_URL: process.env.POSTMAN_DOCS_URL,
@@ -43,9 +50,10 @@ export default env;
 
 // Shipping configuration:
 export const shippingConfig = {
-  provider: process.env.SHIPPING_PROVIDER || 'MOCK',
+  provider: (process.env.SHIPPING_PROVIDER || (process.env.NODE_ENV === 'production' ? 'SHIPPO' : 'MOCK')).toUpperCase(),
   shippo: {
     apiToken: process.env.SHIPPO_API_TOKEN,
+    mockShippingFee: process.env.MOCK_SHIPPING_FEE || '0',
     senderAddress: {
       name: process.env.SENDER_NAME,
       street1: process.env.SENDER_STREET,

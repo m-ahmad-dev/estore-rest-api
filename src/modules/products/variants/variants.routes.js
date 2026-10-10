@@ -11,8 +11,16 @@ import {
 
 // Public routes
 const publicRouter = express.Router({ mergeParams: true });
-publicRouter.get('/', validateUUID, variantController.getProductVariants);
-publicRouter.get('/:variantId', validateUUID, variantController.getVariant);
+publicRouter.get(
+  '/',
+  validateUUID,
+  variantController.getProductVariants
+);
+publicRouter.get(
+  '/:variantId',
+  validateUUID,
+  variantController.getVariant
+);
 
 // Admin routes
 const adminRouter = express.Router({ mergeParams: true });

@@ -11,8 +11,8 @@ const AdminModel = {
   ) => {
     return await db.admins.create({
       data: {
-        name: name,
-        email: email,
+        name,
+        email,
         password_hash: passwordHash,
         phone_number: phone,
         created_by: createdBy,
@@ -22,10 +22,14 @@ const AdminModel = {
 
   findAll: async (db = prisma) => {
     const admins = await db.admins.findMany({
-      orderBy: { created_at: "asc" },
+      orderBy: {
+        created_at: "asc",
+      },
       include: {
         _count: {
-          select: { permissions: true },
+          select: {
+            permissions: true,
+          },
         },
       },
     });
@@ -35,47 +39,69 @@ const AdminModel = {
 
   findByEmail: async (email, db = prisma) => {
     return await db.admins.findUnique({
-      where: { email: email },
+      where: {
+        email,
+      },
     });
   },
 
   findById: async (id, db = prisma) => {
     const admin = await db.admins.findUnique({
-      where: { id: id },
+      where: {
+        id,
+      },
       include: {
         _count: {
-          select: { permissions: true },
+          select: {
+            permissions: true,
+          },
         },
       },
     });
 
-    if (!admin) return null;
+    if (!admin) {
+      return null;
+    }
+
     return {
       ...admin,
-      permission_count: admin._count.admin_permissions,
+      permission_count: admin._count.permissions,
     };
   },
 
   updateStatus: async (id, status, db = prisma) => {
     const updated = await db.admins.update({
-      where: { id: id },
-      data: { is_active: status },
+      where: {
+        id,
+      },
+      data: {
+        is_active: status,
+      },
     });
+
     return !!updated;
   },
 
   deleteById: async (id, db = prisma) => {
     const deleted = await db.admins.delete({
-      where: { id: id },
+      where: {
+        id,
+      },
     });
+
     return !!deleted;
   },
 
   isActive: async (id, db = prisma) => {
     const admin = await db.admins.findUnique({
-      where: { id: id },
-      select: { is_active: true },
+      where: {
+        id,
+      },
+      select: {
+        is_active: true,
+      },
     });
+
     return admin?.is_active ?? null;
   },
 };

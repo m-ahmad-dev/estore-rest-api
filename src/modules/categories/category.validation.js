@@ -3,11 +3,16 @@ import Joi from 'joi';
 export const attributeRuleSchema = Joi.object({
   name: Joi.string().trim().lowercase().required(),
   label: Joi.string().trim().min(1).max(100).required(),
-  type: Joi.string().valid('string', 'number', 'boolean', 'enum').required(),
+  type: Joi.string()
+    .valid('string', 'number', 'boolean', 'enum')
+    .required(),
   required: Joi.boolean().default(false).required(),
   options: Joi.when('type', {
     is: 'enum',
-    then: Joi.array().items(Joi.string().trim().min(1)).min(1).required(),
+    then: Joi.array()
+      .items(Joi.string().trim().min(1))
+      .min(1)
+      .required(),
     otherwise: Joi.forbidden(),
   }),
 })
@@ -23,10 +28,11 @@ export const createCategorySchema = Joi.object({
     .items(attributeRuleSchema)
     .unique((a, b) => a.name === b.name)
     .messages({
-      'array.unique': 'Attribute rule names must be unique within a category',
+      'array.unique':
+        'Attribute rule names must be unique within a category',
     })
     .optional(),
-});
+}).unknown(false);
 
 export const updateCategorySchema = createCategorySchema
   .fork(['name'], (schema) => schema.optional())
@@ -43,12 +49,20 @@ export const updateAttributeRuleSchema = Joi.object({
       'Attribute name cannot be changed. Delete and re-create the attribute if a rename is needed.',
   }),
   label: Joi.string().trim().min(1).max(100).optional(),
-  type: Joi.string().valid('string', 'number', 'boolean', 'enum').optional(),
+  type: Joi.string()
+    .valid('string', 'number', 'boolean', 'enum')
+    .optional(),
   required: Joi.boolean().optional(),
   options: Joi.when('type', {
     is: 'enum',
-    then: Joi.array().items(Joi.string().trim().min(1)).min(1).required(),
-    otherwise: Joi.array().items(Joi.string().trim().min(1)).min(1).optional(),
+    then: Joi.array()
+      .items(Joi.string().trim().min(1))
+      .min(1)
+      .required(),
+    otherwise: Joi.array()
+      .items(Joi.string().trim().min(1))
+      .min(1)
+      .optional(),
   }),
 })
   .min(1)

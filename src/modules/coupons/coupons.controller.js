@@ -2,13 +2,13 @@ import * as couponServices from './coupons.service.js';
 import { asyncWrapper } from '../../core/utils/trycatch.js';
 
 export const createCoupons = asyncWrapper(async (req, res) => {
-  const result = await couponServices.createCouponService(req.body);
+  const result = await couponServices.createCoupon(req.body);
   res.status(201).json(result);
 });
 
 export const updateCoupon = asyncWrapper(async (req, res) => {
   const { id } = req.params;
-  const result = await couponServices.updateCouponService(id, req.body);
+  const result = await couponServices.updateCoupon(id, req.body);
   res.status(200).json(result);
 });
 
@@ -22,6 +22,6 @@ export const getCoupon = asyncWrapper(async (req, res) => {
 });
 
 export const getCoupons = asyncWrapper(async (req, res) => {
-  const result = await couponServices.getAllCoupons(req.query);
+  const result = await couponServices.getCoupons(req.query);
   res.status(200).json(result);
 });

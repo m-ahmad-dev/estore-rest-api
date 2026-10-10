@@ -1,25 +1,47 @@
 import ProdImagesModel from './images.model.js';
 import executeTransaction from '../../../core/utils/dbTransaction.js';
 import AppError from '../../../core/utils/error.utils.js';
-import { formatPublicImages, prepareImages, SORT_GAP } from './images.utils.js';
+import {
+  formatPublicImages,
+  prepareImages,
+  SORT_GAP,
+} from './images.utils.js';
 import { validateProductExists } from '../product.utils.js';
 
-export const getProductImagesService = async ({ productId, isAdmin }) => {
+export const getProductImagesService = async ({
+  productId,
+  isAdmin,
+}) => {
   return await executeTransaction(async (client) => {
     await validateProductExists(productId, client);
 
-    const images = await ProdImagesModel.findByProductId(productId, client);
+    const images = await ProdImagesModel.findByProductId(
+      productId,
+      client
+    );
     if (!isAdmin) return images.map(formatPublicImages);
 
     return images;
   });
 };
 
-export const getImageService = async ({ productId, imageId, isAdmin }) => {
+export const getImageService = async ({
+  productId,
+  imageId,
+  isAdmin,
+}) => {
   return await executeTransaction(async (client) => {
-    await validateProductAndImageOwnership(productId, imageId, client);
+    await validateProductAndImageOwnership(
+      productId,
+      imageId,
+      client
+    );
 
-    const image = await ProdImagesModel.findById(productId, imageId, client);
+    const image = await ProdImagesModel.findById(
+      productId,
+      imageId,
+      client
+    );
     if (!isAdmin) return formatPublicImages(image);
 
     return image;
@@ -32,17 +54,32 @@ export const addImagesService = async (productId, images) => {
   });
 };
 
-export const updateImageService = async (productId, imageId, updates) => {
+export const updateImageService = async (
+  productId,
+  imageId,
+  updates
+) => {
   return executeTransaction(async (client) => {
-    await validateProductAndImageOwnership(productId, imageId, client);
+    await validateProductAndImageOwnership(
+      productId,
+      imageId,
+      client
+    );
 
-    const updatedImage = await ProdImagesModel.update(imageId, updates, client);
+    const updatedImage = await ProdImagesModel.update(
+      imageId,
+      updates,
+      client
+    );
 
     return updatedImage;
   });
 };
 
-export const setImageAsPrimaryService = async (productId, imageId) => {
+export const setImageAsPrimaryService = async (
+  productId,
+  imageId
+) => {
   return executeTransaction(async (client) => {
     const image = await ProdImagesModel.findByIdAndProduct(
       productId,
@@ -58,7 +95,10 @@ export const setImageAsPrimaryService = async (productId, imageId) => {
   });
 };
 
-export const reorderProductImagesService = async (productId, imageIds) => {
+export const reorderProductImagesService = async (
+  productId,
+  imageIds
+) => {
   return executeTransaction(async (client) => {
     await validateProductExists(productId, client);
     await validateReorderRequest(productId, imageIds, client);
@@ -68,7 +108,11 @@ export const reorderProductImagesService = async (productId, imageIds) => {
       sortMap.set(id, (index + 1) * SORT_GAP);
     });
 
-    await ProdImagesModel.updateSortOrdersBulk(imageIds, sortMap, client);
+    await ProdImagesModel.updateSortOrdersBulk(
+      imageIds,
+      sortMap,
+      client
+    );
 
     return await ProdImagesModel.findByProductId(productId, client);
   });
@@ -95,7 +139,10 @@ export const deleteImageService = async (productId, imageId) => {
       );
       if (remainingImages.length > 0) {
         await ProdImagesModel.clearPrimary(productId, null, client);
-        await ProdImagesModel.setPrimary(remainingImages[0].id, client);
+        await ProdImagesModel.setPrimary(
+          remainingImages[0].id,
+          client
+        );
       }
     }
 
@@ -125,13 +172,21 @@ export const deleteImagesByProduct = async (productId, client) => {
   return ProdImagesModel.deleteByProduct(productId, client);
 };
 
-export const insertImagesService = async (productId, images, client) => {
+export const insertImagesService = async (
+  productId,
+  images,
+  client
+) => {
   return saveImages(productId, images, client);
 };
 
 // ====== Private Helper Functions =======
 
-async function validateProductAndImageOwnership(productId, imageId, client) {
+async function validateProductAndImageOwnership(
+  productId,
+  imageId,
+  client
+) {
   await validateProductExists(productId, client);
 
   const image = await ProdImagesModel.findByIdAndProduct(
@@ -152,7 +207,9 @@ async function validateReorderRequest(productId, imageIds, client) {
     throw AppError.badRequest('No images available to reorder');
   }
 
-  const existingImageIds = new Set(existingImages.map((img) => img.id));
+  const existingImageIds = new Set(
+    existingImages.map((img) => img.id)
+  );
 
   if (imageIds.length !== existingImageIds.size) {
     throw AppError.badRequest(
@@ -174,10 +231,16 @@ async function saveImages(productId, images, db) {
   await validateProductExists(productId, db);
 
   const keys = images.map((img) => img.key.trim());
-  const existingKeys = await ProdImagesModel.findKeys(productId, keys, db);
+  const existingKeys = await ProdImagesModel.findKeys(
+    productId,
+    keys,
+    db
+  );
 
   if (existingKeys.length > 0) {
-    throw AppError.conflict('Some images already exist for this product');
+    throw AppError.conflict(
+      'Some images already exist for this product'
+    );
   }
 
   const [existingPrimary, maxSortOrder] = await Promise.all([
@@ -185,11 +248,20 @@ async function saveImages(productId, images, db) {
     ProdImagesModel.getMaxSortOrder(productId, db),
   ]);
 
-  const preparedImages = prepareImages(images, maxSortOrder + SORT_GAP);
+  const preparedImages = prepareImages(
+    images,
+    maxSortOrder + SORT_GAP
+  );
 
-  const hasIncomingPrimary = preparedImages.some((img) => img.is_primary);
+  const hasIncomingPrimary = preparedImages.some(
+    (img) => img.is_primary
+  );
 
-  if (!existingPrimary && !hasIncomingPrimary && preparedImages.length > 0) {
+  if (
+    !existingPrimary &&
+    !hasIncomingPrimary &&
+    preparedImages.length > 0
+  ) {
     preparedImages[0].is_primary = true;
   }
 
@@ -197,5 +269,9 @@ async function saveImages(productId, images, db) {
     await ProdImagesModel.clearPrimary(productId, null, db);
   }
 
-  return await ProdImagesModel.insertMany(productId, preparedImages, db);
+  return await ProdImagesModel.insertMany(
+    productId,
+    preparedImages,
+    db
+  );
 }

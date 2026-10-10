@@ -11,6 +11,12 @@ import * as paymentService from '../payment/payment.service.js';
 import { fireBackgroundTask } from '../../core/utils/async_worker.utils.js';
 import { findCustomerById } from '../customer/customer.service.js';
 import { OrderModel, OrderItemModel } from './order.model.js';
+import {
+  decrementCouponUsage,
+  findCouponById,
+  incrementCouponUsage,
+  validateAndCalculateDiscount,
+} from '../coupons/coupons.service.js';
 
 // Private Helpers //
 
@@ -138,28 +144,62 @@ const performOrderCancellation = async (order) => {
     );
   }
 
+  if (order.payment_status === 'PAID') {
+    throw AppError.conflict(
+      'This order has already been paid. Use the refund workflow instead of cancelling it.'
+    );
+  }
+
   const [shippingRecord, paymentRecord] = await Promise.all([
     shipmentService.findShipmentByOrderId(order.id),
     paymentService.findPaymentByOrderId(order.id),
   ]);
 
-  await executeTransaction(async (client) => {
-    const orderItems = await OrderItemModel.findByOrderId(
-      order.id,
-      client
+  // Expire an open Checkout Session before releasing its inventory reservation.
+  // A completed/paid session blocks cancellation until its webhook is reconciled.
+  if (order.payment_method === 'CARD' && paymentRecord?.checkout_session_id) {
+    await stripeService.cancelStripeCheckoutSession(
+      paymentRecord.checkout_session_id
     );
+  } else if (
+    order.payment_method === 'CARD' &&
+    paymentRecord?.transaction_id?.startsWith('pi_')
+  ) {
+    await stripeService.cancelStripePaymentIntent(paymentRecord.transaction_id);
+  }
 
+  await executeTransaction(async (client) => {
+    const cancellation = await client.orders.updateMany({
+      where: {
+        id: order.id,
+        status: { in: ['PENDING', 'CONFIRMED'] },
+        payment_status: { not: 'PAID' },
+      },
+      data: { status: 'CANCELLED', payment_status: 'CANCELLED' },
+    });
+
+    if (cancellation.count === 0) {
+      throw AppError.conflict(
+        'The order changed while cancellation was in progress. Refresh and try again.'
+      );
+    }
+
+    // Checkout has only reserved inventory while an order is PENDING/CONFIRMED.
+    // Releasing a reservation must not increase on-hand stock a second time.
+    const orderItems = await OrderItemModel.findByOrderId(order.id, client);
     for (const item of orderItems) {
-      await prodVariantService.restoreProductStock(
+      await prodVariantService.releaseProductReservation(
         item.variant_id,
         item.quantity,
         client
       );
     }
 
-    await updateOrderStatus(
+    if (order.coupon_id) await decrementCouponUsage(order.coupon_id, client);
+
+    await paymentService.updatePaymentRecordByOrder(
       order.id,
-      { status: 'CANCELLED' },
+      { status: 'CANCELLED', checkout_url: null },
       client
     );
 
@@ -173,49 +213,16 @@ const performOrderCancellation = async (order) => {
   });
 
   const warnings = [];
-
-  if (
-    paymentRecord?.transaction_id &&
-    order.payment_method === 'CARD'
-  ) {
-    try {
-      if (['PAID', 'SUCCEEDED'].includes(order.payment_status)) {
-        await stripeService.refundStripePayment(
-          paymentRecord.transaction_id,
-          order.total_amount
-        );
-      } else {
-        await stripeService.cancelStripePaymentIntent(
-          paymentRecord.transaction_id
-        );
-      }
-    } catch (err) {
-      console.error(
-        `[Refund Failed] Order ${order.id}:`,
-        err.message
-      );
-      warnings.push('Payment could not be refunded automatically.');
-    }
-  }
-
   if (shippingRecord?.transaction_id) {
     try {
-      await shippoService.cancelShippoShipment(
-        shippingRecord.transaction_id
-      );
+      await shippoService.cancelShippoShipment(shippingRecord.transaction_id);
     } catch (err) {
-      console.error(
-        `[Shippo Cancel Failed] Order ${order.id}:`,
-        err.message
-      );
-      warnings.push(
-        'Shipment cancellation with carrier could not be completed.'
-      );
+      console.error(`[Shippo Cancel Failed] Order ${order.id}:`, err.message);
+      warnings.push('Shipment cancellation with carrier could not be completed.');
     }
   }
 
   const updatedOrder = await OrderModel.findById(order.id);
-
   return {
     success: true,
     message: 'Order cancelled successfully.',
@@ -255,7 +262,17 @@ const buildOrderResponsePayload = (order, scope = 'public') => {
             address: order.guest_address,
           },
         }
-      : { customer_id: order.customer_id }),
+      : {
+          customer: {
+            id: order.customer.id,
+            name: `${order.customer.first_name} ${order.customer.last_name}`,
+            email: order.customer.email,
+            phone: order.customer.phone,
+            is_active: order.customer.is_active,
+            created_at: order.customer.created_at,
+            deleted_at: order.customer.deleted_at,
+          },
+        }),
     items: (order.items || []).map((item) => ({
       id: item.id,
       variant_id: item.variant_id,
@@ -296,11 +313,9 @@ const buildOrderResponsePayload = (order, scope = 'public') => {
  * creates initial shipment audit trails, and initializes payment intents.
  */
 export const createOrderService = async (user, data) => {
-  // Resolve address and customer details prior to starting database locks
   const verifiedAddress = await resolveVerifiedAddress(user, data);
   const customerInfo = await prepareCustomerInfo(user);
   const isRegistered = Boolean(user?.customer_id);
-
   const checkoutContext = {
     address: verifiedAddress,
     customer: customerInfo || {
@@ -310,39 +325,69 @@ export const createOrderService = async (user, data) => {
     },
   };
 
-  // Retrieve active cart items and calculate real-time shipping rates
-  const cartData = await cartService.resolveCartForCheckout(
-    user,
-    checkoutContext
-  );
-
+  // A shipping quote is an external network call and must not hold a DB
+  // transaction open. The cart is revalidated inside the write transaction.
+  const cartData = await cartService.resolveCartForCheckout(user, checkoutContext);
   const shippingInfo = await shippoService.fetchRatesAndLowestRate({
     ...checkoutContext,
     totalWeight: cartData.totalWeight || 1,
   });
 
-  // Calculate financials in integer cents to eliminate rounding precision issues
   const subtotalCents = toCents(cartData.subtotal);
   const discountCents = toCents(cartData.discount);
   const shippingFeeCents = toCents(shippingInfo.fee);
-
-  const totalAmountCents =
-    subtotalCents - discountCents + shippingFeeCents;
-
+  const totalAmountCents = subtotalCents - discountCents + shippingFeeCents;
   if (totalAmountCents < 0) {
     throw AppError.badRequest('Invalid total amount calculation.');
   }
 
-  // Convert normalized cent values back to standard unit decimal values for database storage
   const subtotal = subtotalCents / 100;
   const discountAmount = discountCents / 100;
   const shippingCost = shippingFeeCents / 100;
   const totalAmount = totalAmountCents / 100;
-
   let initialShipment = null;
 
-  // Execute database writes inside an isolated atomic transaction
   const { order } = await executeTransaction(async (client) => {
+    const currentCart = await cartService.resolveCartForCheckout(
+      user,
+      checkoutContext,
+      client
+    );
+    const snapshotChanged =
+      currentCart.items.length !== cartData.items.length ||
+      currentCart.items.some((item, index) => {
+        const original = cartData.items[index];
+        return !original || item.id !== original.id ||
+          item.variant_id !== original.variant_id ||
+          item.quantity !== original.quantity ||
+          toCents(item.variant.price) !== toCents(original.variant.price);
+      }) ||
+      toCents(currentCart.subtotal) !== subtotalCents ||
+      toCents(currentCart.discount) !== discountCents ||
+      Number(currentCart.totalWeight) !== Number(cartData.totalWeight);
+
+    if (snapshotChanged) {
+      throw AppError.conflict(
+        'Your cart or pricing changed during checkout. Review your cart and place the order again.'
+      );
+    }
+
+    if (currentCart.cart?.coupon_id) {
+      const coupon = await findCouponById(currentCart.cart.coupon_id, client);
+      if (!coupon) throw AppError.badRequest('The applied coupon is no longer available.');
+      const validatedCoupon = await validateAndCalculateDiscount(
+        coupon.code,
+        subtotal,
+        client
+      );
+      if (toCents(validatedCoupon.discountAmount) !== discountCents) {
+        throw AppError.conflict(
+          'Your discount changed during checkout. Refresh the cart before placing the order.'
+        );
+      }
+      await incrementCouponUsage(coupon.id, client);
+    }
+
     const orderPayload = {
       order_number: generateOrderNumber(),
       customer_id: isRegistered ? user.customer_id : null,
@@ -351,7 +396,7 @@ export const createOrderService = async (user, data) => {
       guest_email: isRegistered ? null : data.guest_email,
       guest_phone: isRegistered ? null : data.guest_phone,
       guest_address: isRegistered ? null : data.guest_address,
-      coupon_id: cartData.cart?.coupon_id || null,
+      coupon_id: currentCart.cart?.coupon_id || null,
       status: 'PENDING',
       payment_method: data.payment_method,
       payment_status: 'UNPAID',
@@ -362,8 +407,7 @@ export const createOrderService = async (user, data) => {
     };
 
     const newOrder = await OrderModel.create(orderPayload, client);
-
-    const orderItemPayloads = cartData.items.map((item) => ({
+    const orderItemPayloads = currentCart.items.map((item) => ({
       order_id: newOrder.id,
       variant_id: item.variant_id,
       product_name: item.product_name,
@@ -371,21 +415,16 @@ export const createOrderService = async (user, data) => {
       variant_options: item.variant.attributes,
       quantity: item.quantity,
       unit_price: item.variant.price,
-      total_price:
-        (toCents(item.variant.price) * item.quantity) / 100,
+      total_price: (toCents(item.variant.price) * item.quantity) / 100,
     }));
-
     await OrderItemModel.insertMany(orderItemPayloads, client);
 
-    // Reserve stock atomically at the database engine level to prevent over-selling
-    for (const item of cartData.items) {
-      const reserved =
-        await prodVariantService.atomicReserveStockOperation(
-          item.variant_id,
-          item.quantity,
-          client
-        );
-
+    for (const item of currentCart.items) {
+      const reserved = await prodVariantService.atomicReserveStockOperation(
+        item.variant_id,
+        item.quantity,
+        client
+      );
       if (!reserved) {
         throw AppError.badRequest(
           `Insufficient stock for '${item.product_name || item.variant.sku}'.`
@@ -393,15 +432,15 @@ export const createOrderService = async (user, data) => {
       }
     }
 
-    // Persist an initial shipment record with PENDING_LABEL status for recovery tracking
     initialShipment = await shipmentService.createShipmentRecord(
       {
         order_id: newOrder.id,
         carrier: shippingInfo.carrier,
+        rate_id: shippingInfo.rateObjectId || null,
         transaction_id: null,
         tracking_number: null,
         label_url: null,
-        status: 'PENDING_LABEL',
+        status: shippingInfo.mock ? 'PROCESSING' : 'PENDING_LABEL',
       },
       client
     );
@@ -409,50 +448,56 @@ export const createOrderService = async (user, data) => {
     return { order: newOrder };
   });
 
-  // Attempt asynchronous shipping label purchase; failures remain recoverable via cron job
-  fireBackgroundTask(async () => {
-    try {
-      const labelDetails = await shippoService.purchaseLabelAsync(
-        shippingInfo.rateObjectId
-      );
-
-      await shipmentService.updateShippingRecord(initialShipment.id, {
-        transaction_id: labelDetails.transactionId,
-        tracking_number: labelDetails.trackingNumber,
-        label_url: labelDetails.labelUrl,
-        status: 'PROCESSING',
-      });
-    } catch (err) {
-      console.error(`[SHIPPO LABEL ERROR] Order ${order.id}:`, err);
-    }
-  });
-
-  // Initialize payment gateway intent if credit card is selected
   let paymentIntent = null;
   if (data.payment_method === 'CARD') {
-    paymentIntent = await stripeService.processOrderPaymentIntent(
-      order.id
-    );
+    try {
+      paymentIntent = await stripeService.processOrderPaymentIntent(order.id);
+    } catch (error) {
+      // Compensate for a failed Stripe-session initialization. Leave the cart
+      // untouched and release the stock/coupon reservation so retrying checkout
+      // does not create orphaned inventory holds.
+      try {
+        const latestOrder = await OrderModel.findById(order.id);
+        if (latestOrder && ['PENDING', 'CONFIRMED'].includes(latestOrder.status)) {
+          await performOrderCancellation(latestOrder);
+        }
+      } catch (compensationError) {
+        console.error(
+          `[CHECKOUT COMPENSATION ERROR] Order ${order.id}:`,
+          compensationError
+        );
+      }
+      throw error;
+    }
+  } else if (!shippingInfo.mock && shippingInfo.rateObjectId) {
+    // COD orders may be prepared for dispatch immediately; card orders are not
+    // sent to the carrier until Stripe confirms payment in the webhook.
+    fireBackgroundTask(async () => {
+      try {
+        await shipmentService.purchaseAndPersistShipmentLabel(order.id);
+      } catch (err) {
+        console.error(`[SHIPPO LABEL ERROR] Order ${order.id}:`, err);
+      }
+    });
   }
 
-  // Clear customer or session cart following successful order creation
   await cartService.clearCart(user);
 
   return {
     success: true,
-    message:
-      data.payment_method === 'CARD'
-        ? 'Order created. Complete payment using the provided intent.'
-        : 'Order placed successfully.',
+    message: data.payment_method === 'CARD'
+      ? 'Order created. Redirecting to secure payment.'
+      : 'Order placed successfully.',
     data: {
       order: {
         id: order.id,
         order_number: order.order_number,
         status: order.status,
+        payment_method: data.payment_method,
         total_amount: order.total_amount,
       },
-      paymentIntent: paymentIntent
-        ? { clientSecret: paymentIntent.clientSecret }
+      payment: paymentIntent
+        ? { checkoutUrl: paymentIntent.checkoutUrl, sessionId: paymentIntent.sessionId }
         : null,
       summary: {
         subtotal,
@@ -742,6 +787,10 @@ export const getOrderForAdminService = async (orderId) => {
 };
 
 export const updateOrderStatusService = async (orderId, body) => {
+  if (body.status === 'CANCELLED') {
+    return cancelOrderAdminService({ orderId });
+  }
+
   return await executeTransaction(async (client) => {
     const order = await OrderModel.findById(orderId, client);
     if (!order) {
@@ -757,6 +806,46 @@ export const updateOrderStatusService = async (orderId, body) => {
         message: 'Order updated successfully',
         order: { id: order.id, status: order.status },
       };
+    }
+
+    const allowedTransitions = {
+      PENDING: ['CONFIRMED', 'PROCESSING', 'SHIPPED'],
+      CONFIRMED: ['PROCESSING', 'SHIPPED'],
+      PROCESSING: ['SHIPPED', 'DELIVERED'],
+      SHIPPED: ['DELIVERED'],
+      DELIVERED: [],
+      CANCELLED: [],
+    };
+    if (!allowedTransitions[order.status]?.includes(body.status)) {
+      throw AppError.conflict(
+        `Invalid order status transition: ${order.status} to ${body.status}.`
+      );
+    }
+
+    // Card orders may not be advanced to CONFIRMED or fulfilment while unpaid;
+    // doing so would block secure payment retry and could ship unpaid goods.
+    if (order.payment_method === 'CARD' && order.payment_status !== 'PAID') {
+      throw AppError.badRequest(
+        'A card order cannot advance until Stripe confirms payment. The customer can retry payment while the order is pending.'
+      );
+    }
+
+    const fulfillmentStatuses = ['PROCESSING', 'SHIPPED', 'DELIVERED'];
+    const isStartingFulfillment =
+      ['PENDING', 'CONFIRMED'].includes(order.status) &&
+      fulfillmentStatuses.includes(body.status);
+
+    if (isStartingFulfillment) {
+      // Both COD and paid-card orders held reservations at checkout. Commit a
+      // reservation only when transitioning an order out of its initial states.
+      const items = await OrderItemModel.findByOrderId(orderId, client);
+      for (const item of items) {
+        await prodVariantService.decreaseProductStockAndReverved(
+          item.variant_id,
+          item.quantity,
+          client
+        );
+      }
     }
 
     const updatedOrder = await OrderModel.update(
@@ -786,26 +875,46 @@ export const updateOrderPaymentStatusService = async (
       );
     }
 
-    await paymentService.updatePaymentRecordByOrder(
+    if (order.payment_method === 'CARD') {
+      if (body.status === order.payment_status) {
+        return {
+          success: true,
+          message: 'Payment status is already current.',
+          data: { id: orderId, status: order.payment_status },
+        };
+      }
+      throw AppError.badRequest(
+        'Card payment status is controlled by Stripe. Use the Stripe refund workflow for refunds and the order cancellation workflow for cancellations.'
+      );
+    }
+
+    if (['REFUNDED', 'CANCELLED'].includes(body.status)) {
+      throw AppError.badRequest(
+        'Refund and cancellation payment statuses are applied by their corresponding order workflows.'
+      );
+    }
+    if (order.status === 'CANCELLED' && body.status !== 'CANCELLED') {
+      throw AppError.conflict('A cancelled order payment status cannot be reopened manually.');
+    }
+
+    await paymentService.upsertPaymentRecordForOrder(
       orderId,
-      { status: body.status },
-      client
-    );
-    await OrderModel.update(
-      orderId,
-      { payment_status: body.status },
+      {
+        method: order.payment_method,
+        status: body.status,
+        amount: order.total_amount,
+        paid_at: body.status === 'PAID' ? new Date() : null,
+      },
       client
     );
 
-    const updatedPayment = await paymentService.findPaymentByOrderId(
-      orderId,
-      client
-    );
+    await OrderModel.update(orderId, { payment_status: body.status }, client);
 
+    const updatedPayment = await paymentService.findPaymentByOrderId(orderId, client);
     return {
       success: true,
       message: 'Order payment updated successfully',
-      data: { id: orderId, status: updatedPayment.status },
+      data: { id: orderId, status: updatedPayment?.status ?? body.status },
     };
   });
 };
@@ -823,13 +932,60 @@ export const updateOrderShippingStatusService = async (
       );
     }
 
-    await shipmentService.updateShippingByOrderId(
-      orderId,
-      { status: body.status },
-      client
-    );
-    const updatedRecord = await shipmentService.findShipmentByOrderId(
-      orderId,
+    const shipment = await shipmentService.findShipmentByOrderId(orderId, client);
+    if (!shipment) throw AppError.notFound('Shipment', 'No shipment exists for this order.');
+    if (shipment.status === body.status) {
+      return {
+        success: true,
+        message: 'Shipment status is already current.',
+        data: { id: orderId, status: shipment.status },
+      };
+    }
+
+    const allowedShipmentTransitions = {
+      PENDING_LABEL: [],
+      PROCESSING: ['SHIPPED'],
+      SHIPPED: ['DELIVERED'],
+      DELIVERED: [],
+      CANCELLED: [],
+    };
+    if (!allowedShipmentTransitions[shipment.status]?.includes(body.status)) {
+      throw AppError.conflict(
+        `Invalid shipment status transition: ${shipment.status} to ${body.status}. Wait for label creation or use the correct fulfilment workflow.`
+      );
+    }
+
+    const shipmentUpdates = { status: body.status };
+    if (body.status === 'SHIPPED') {
+      if (order.payment_method === 'CARD' && order.payment_status !== 'PAID') {
+        throw AppError.badRequest('An unpaid card order cannot be shipped.');
+      }
+      if (!['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED'].includes(order.status)) {
+        throw AppError.conflict(`Order status ${order.status} is not eligible to ship.`);
+      }
+      if (['PENDING', 'CONFIRMED'].includes(order.status)) {
+        const items = await OrderItemModel.findByOrderId(orderId, client);
+        for (const item of items) {
+          await prodVariantService.decreaseProductStockAndReverved(
+            item.variant_id,
+            item.quantity,
+            client
+          );
+        }
+      }
+      shipmentUpdates.shipped_at = new Date();
+      await OrderModel.update(orderId, { status: 'SHIPPED' }, client);
+    } else if (body.status === 'DELIVERED') {
+      if (order.status !== 'SHIPPED') {
+        throw AppError.conflict('An order must be marked shipped before it can be delivered.');
+      }
+      shipmentUpdates.delivered_at = new Date();
+      await OrderModel.update(orderId, { status: 'DELIVERED' }, client);
+    }
+
+    const updatedRecord = await shipmentService.updateShippingRecord(
+      shipment.id,
+      shipmentUpdates,
       client
     );
 
@@ -852,6 +1008,160 @@ export const cancelOrderAdminService = async ({ orderId }) => {
   return performOrderCancellation(order);
 };
 
+/** Full Stripe refund workflow. Unshipped orders are cancelled and inventory is
+ * reconciled atomically; shipped/delivered orders retain their fulfilment state. */
+export const refundOrderPaymentService = async (orderId) => {
+  const order = await OrderModel.findById(orderId);
+  if (!order) {
+    throw AppError.notFound('Order', `Order with ID ${orderId} not found.`);
+  }
+  if (order.payment_method !== 'CARD') {
+    throw AppError.badRequest('Only card payments can be refunded through Stripe.');
+  }
+
+  let payment = await paymentService.findPaymentByOrderId(orderId);
+  if (!payment?.transaction_id?.startsWith('pi_')) {
+    throw AppError.conflict('No Stripe PaymentIntent is linked to this order.');
+  }
+
+  if (order.payment_status === 'REFUNDED' && payment.status === 'REFUNDED') {
+    return {
+      success: true,
+      message: 'Payment has already been refunded.',
+      data: { orderId, payment_status: 'REFUNDED', order_status: order.status },
+    };
+  }
+
+  // If Stripe succeeded but a prior request failed while reconciling the order,
+  // the persisted payment state lets this request safely finish without refunding twice.
+  if (payment.status !== 'REFUNDED') {
+    if (order.payment_status !== 'PAID' || payment.status !== 'PAID') {
+      throw AppError.conflict('Only a confirmed, paid Stripe order can be refunded.');
+    }
+    await stripeService.refundStripePayment(
+      payment.transaction_id,
+      Number(order.total_amount),
+      `admin-order-refund-${orderId}-${payment.transaction_id}`
+    );
+  }
+
+  const originalShipment = await shipmentService.findShipmentByOrderId(orderId);
+  let cancelledBeforeShipment = false;
+  const result = await executeTransaction(async (client) => {
+    const latestOrder = await OrderModel.findById(orderId, client);
+    const latestPayment = await paymentService.findPaymentByOrderId(orderId, client);
+    if (!latestOrder || !latestPayment) {
+      throw AppError.conflict('Order/payment state changed during refund reconciliation.');
+    }
+    if (latestOrder.payment_status === 'REFUNDED') {
+      return { status: latestOrder.status, payment_status: 'REFUNDED' };
+    }
+    if (latestPayment.status !== 'REFUNDED') {
+      throw AppError.conflict('Stripe refund has not been persisted; refresh and retry reconciliation.');
+    }
+
+    const initialStates = ['PENDING', 'CONFIRMED'];
+    const shouldCancel = [...initialStates, 'PROCESSING'].includes(latestOrder.status);
+    if (shouldCancel) {
+      const transition = await client.orders.updateMany({
+        where: {
+          id: orderId,
+          status: latestOrder.status,
+          payment_status: { in: ['PAID', 'UNPAID', 'CANCELLED'] },
+        },
+        data: { status: 'CANCELLED', payment_status: 'REFUNDED' },
+      });
+      if (transition.count !== 1) {
+        throw AppError.conflict('Order changed during refund reconciliation. Refresh and try again.');
+      }
+
+      const items = await OrderItemModel.findByOrderId(orderId, client);
+      for (const item of items) {
+        if (initialStates.includes(latestOrder.status)) {
+          await prodVariantService.releaseProductReservation(
+            item.variant_id,
+            item.quantity,
+            client
+          );
+        } else {
+          // PROCESSING means the reservation was committed when Stripe payment
+          // was accepted, so undo that stock decrement exactly once.
+          await prodVariantService.restoreProductStock(
+            item.variant_id,
+            item.quantity,
+            client
+          );
+        }
+      }
+
+      if (latestOrder.coupon_id) await decrementCouponUsage(latestOrder.coupon_id, client);
+      await shipmentService.updateShippingByOrderId(
+        orderId,
+        { status: 'CANCELLED' },
+        client
+      );
+      cancelledBeforeShipment = true;
+    } else {
+      await client.orders.update({
+        where: { id: orderId },
+        data: { payment_status: 'REFUNDED' },
+      });
+    }
+
+    return { status: shouldCancel ? 'CANCELLED' : latestOrder.status, payment_status: 'REFUNDED' };
+  });
+
+  const warnings = [];
+  if (cancelledBeforeShipment && originalShipment?.transaction_id) {
+    try {
+      await shippoService.cancelShippoShipment(originalShipment.transaction_id);
+    } catch (error) {
+      console.error(`[SHIPPO REFUND CANCEL ERROR] Order ${orderId}:`, error.message);
+      warnings.push('Payment was refunded, but the shipping label could not be cancelled automatically.');
+    }
+  }
+
+  return {
+    success: true,
+    message: 'Stripe payment refunded successfully.',
+    data: { orderId, payment_status: result.payment_status, order_status: result.status },
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
+};
+
+export const createOrderPaymentSessionService = async (orderId, user, payload = {}) => {
+  const order = await OrderModel.findById(orderId);
+  if (!order) throw AppError.notFound('Order', `Order with ID ${orderId} not found.`);
+
+  if (order.customer_id) {
+    if (!user?.id || order.customer_id !== user.id) {
+      throw AppError.forbidden('You do not have permission to pay this order.');
+    }
+  } else {
+    const emailMatches = order.guest_email && payload.email &&
+      order.guest_email.toLowerCase() === payload.email.trim().toLowerCase();
+    const numberMatches = order.order_number && payload.order_number &&
+      order.order_number.toUpperCase() === payload.order_number.trim().toUpperCase();
+    if (!emailMatches || !numberMatches) {
+      throw AppError.forbidden('Enter the email address and order number used for this guest order.');
+    }
+  }
+
+  if (order.status !== 'PENDING' || order.payment_status === 'PAID') {
+    throw AppError.badRequest('This order is not eligible for payment retry.');
+  }
+  if (order.payment_method !== 'CARD') {
+    throw AppError.badRequest('Only card orders can be paid through Stripe.');
+  }
+
+  const payment = await stripeService.processOrderPaymentIntent(orderId);
+  return {
+    success: true,
+    message: 'Secure payment session ready.',
+    data: { payment },
+  };
+};
+
 // Shared Model Utility Wrappers //
 
 export const findOrderById = async (orderId, client) =>
@@ -860,3 +1170,5 @@ export const updateOrderStatus = async (orderId, payload, client) =>
   OrderModel.update(orderId, payload, client);
 export const findItemsByOrderId = async (orderId, client) =>
   OrderItemModel.findByOrderId(orderId, client);
+export const findPaymentByOrderId = async (orderId, client) =>
+  paymentService.findPaymentByOrderId(orderId, client);

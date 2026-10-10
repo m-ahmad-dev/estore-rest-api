@@ -10,16 +10,16 @@ export const createAddressSchema = Joi.object({
     'string.empty': 'City is required',
     'any.required': 'City is required',
   }),
-  province: Joi.string().trim().max(100).optional().required(),
+  province: Joi.string().trim().max(100).required(),
   province_code: Joi.string()
     .trim()
     .min(2)
     .max(2)
     .uppercase()
     .required(),
-  country: Joi.string().trim().min(1).max(100).optional().required(),
+  country: Joi.string().trim().min(1).max(100).required(),
   country_code: Joi.string().min(1).max(2).uppercase().required(),
-  postal_code: Joi.string().trim().max(20).optional().allow(null, ''),
+  postal_code: Joi.string().trim().max(20).required(),
   is_default: Joi.boolean().optional().default(false),
 })
   .required()

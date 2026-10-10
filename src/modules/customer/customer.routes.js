@@ -58,7 +58,7 @@ customerRoutes.patch(
 customerRoutes.patch(
   "/admin/customers/:id/status",
   validateUUID,
-  authorizePermission("customers.update_status"),
+  authorizePermission("customers.edit"),
   isCustomerExist,
   changeCustomerStatus,
 );

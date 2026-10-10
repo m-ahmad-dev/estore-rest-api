@@ -11,8 +11,16 @@ import validateUUID from '../../../core/middlewares/valid_uuid.middleware.js';
 
 const publicRoutes = express.Router({ mergeParams: true });
 
-publicRoutes.get('/', validateUUID, imagesControllers.getProductImages);
-publicRoutes.get('/:imageId', validateUUID, imagesControllers.getImage);
+publicRoutes.get(
+  '/',
+  validateUUID,
+  imagesControllers.getProductImages
+);
+publicRoutes.get(
+  '/:imageId',
+  validateUUID,
+  imagesControllers.getImage
+);
 
 // ===== ADMIN ROUTES =====
 const adminRoutes = express.Router({ mergeParams: true });
@@ -69,4 +77,7 @@ adminRoutes.delete(
   imagesControllers.deleteImage
 );
 
-export { publicRoutes as imagesPublicRoutes, adminRoutes as imagesAdminRoutes };
+export {
+  publicRoutes as imagesPublicRoutes,
+  adminRoutes as imagesAdminRoutes,
+};

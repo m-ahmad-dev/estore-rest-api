@@ -3,8 +3,8 @@ import {
   deleteAdminPermissionService,
   getAdminPermissionsService,
   replaceAdminPermissionsService,
-} from "./permissions.service.js";
-import { asyncWrapper } from "../../core/utils/trycatch.js";
+} from './permissions.service.js';
+import { asyncWrapper } from '../../core/utils/trycatch.js';
 
 // PERMISSION CONTROLLERS
 
@@ -17,12 +17,12 @@ export const putAdminPermissions = asyncWrapper(async (req, res) => {
   const updated = await replaceAdminPermissionsService(
     req.params.id,
     req.body.permissions,
-    req.user.id,
+    req.user.id
   );
 
   return res.status(200).json({
     success: true,
-    message: "Permissions synced.",
+    message: 'Permissions synced.',
     permissions: updated,
   });
 });
@@ -32,19 +32,25 @@ export const assignPermission = asyncWrapper(async (req, res) => {
   const permissions = await assignPermissionService(
     req.params.id,
     permission,
-    req.user?.id,
+    req.user?.id
   );
 
   return res
     .status(201)
-    .json({ success: true, message: "Permission assigned.", permissions });
+    .json({
+      success: true,
+      message: 'Permission assigned.',
+      permissions,
+    });
 });
 
-export const deleteAdminPermission = asyncWrapper(async (req, res) => {
-  const { id, permission } = req.params;
-  await deleteAdminPermissionService(id, permission);
-  
-  return res
-    .status(200)
-    .json({ success: true, message: "Permission removed." });
-});
+export const deleteAdminPermission = asyncWrapper(
+  async (req, res) => {
+    const { id, permission } = req.params;
+    await deleteAdminPermissionService(id, permission);
+
+    return res
+      .status(200)
+      .json({ success: true, message: 'Permission removed.' });
+  }
+);

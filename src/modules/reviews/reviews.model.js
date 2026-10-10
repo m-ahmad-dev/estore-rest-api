@@ -63,6 +63,18 @@ const ReviewsModel = {
             last_name: true,
           },
         },
+        product: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            images: {
+              where: { is_primary: true },
+              take: 1,
+              select: { url: true },
+            },
+          },
+        },
       },
     });
   },
@@ -105,7 +117,6 @@ const ReviewsModel = {
     };
   },
 
-  // Admin: Fetch reviews with advanced filtering + Full-Text Search
   findAllForAdmin: async (options = {}, db = prisma) => {
     const {
       cursor,
@@ -121,7 +132,6 @@ const ReviewsModel = {
 
     const conditions = [];
 
-    // Dynamic WHERE conditions
     if (status) {
       conditions.push(Prisma.sql`r.status = ${status}`);
     }
@@ -165,6 +175,13 @@ const ReviewsModel = {
         p.id as product_id,
         p.name as product_name,
         p.slug as product_slug,
+        (
+          SELECT pi.url 
+          FROM "product_images" pi 
+          WHERE pi.product_id = p.id 
+          ORDER BY pi.is_primary DESC, pi.sort_order ASC 
+          LIMIT 1
+        ) as product_image,
         c.id as customer_id,
         c.first_name,
         c.last_name,
@@ -198,6 +215,11 @@ const ReviewsModel = {
             slug: true,
             is_active: true,
             created_at: true,
+            images: {
+              where: { is_primary: true },
+              take: 1,
+              select: { url: true },
+            },
           },
         },
         order: {

@@ -22,7 +22,11 @@ const ProductErrorCode = {
 };
 
 // Validate slug uniqueness:
-export async function validateUniqueSlug(name, productId = null, client) {
+export async function validateUniqueSlug(
+  name,
+  productId = null,
+  client
+) {
   const slug = toSlug(name);
   const isAvailable = await ProductModel.isSlugAvailable(
     slug,
@@ -43,6 +47,7 @@ export async function validateUniqueSlug(name, productId = null, client) {
 
 // Validate category change compatibility with existing variants:
 export const validateCategoryChange = async (
+  productId,
   newCategoryId,
   existingProduct,
   client
@@ -79,9 +84,15 @@ export const validateCategoryChange = async (
 };
 
 export async function validateProductExists(productId, client) {
-  const { exists, deleted } = await checkProductExist(productId, client);
+  const { exists, deleted } = await checkProductExist(
+    productId,
+    client
+  );
   if (!exists || deleted) {
-    throw AppError.notFound('Product', 'Product not exist or has been deleted');
+    throw AppError.notFound(
+      'Product',
+      'Product not exist or has been deleted'
+    );
   }
 }
 

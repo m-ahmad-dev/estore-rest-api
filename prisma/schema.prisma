@@ -317,6 +317,9 @@ model payments {
   order_id       String        @db.Uuid
   amount         Decimal       @db.Decimal(10, 2)
   transaction_id String?       @unique @db.VarChar(255)
+  checkout_session_id String?  @unique @db.VarChar(255)
+  attempt_id     String?       @db.VarChar(255)
+  checkout_url   String?       @db.VarChar(1000)
   paid_at        DateTime?     @db.Timestamp(6)
   method         PaymentMethod
   status         PaymentStatus @default(UNPAID)
@@ -372,6 +375,8 @@ model shipments {
   status          ShipmentStatus @default(PROCESSING)
   label_url       String?        @db.VarChar(500)
   transaction_id  String?        @db.VarChar(225)
+  rate_id         String?        @db.VarChar(255)
+  label_purchase_started_at DateTime? @db.Timestamp(6)
   order           orders         @relation(fields: [order_id], references: [id], onDelete: Cascade)
 
   @@index([order_id], map: "idx_shipments_order")
@@ -457,6 +462,7 @@ enum PaymentStatus {
 
 enum ShipmentStatus {
   PENDING_LABEL
+  PURCHASING_LABEL
   PROCESSING
   SHIPPED
   DELIVERED

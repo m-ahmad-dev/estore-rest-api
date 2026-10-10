@@ -81,3 +81,8 @@ CREATE TRIGGER trg_reviews_search_vector_update
     EXECUTE FUNCTION reviews_update_search_vector();
 
     -- =========================== --
+   select * from permissions;
+
+UPDATE product_images 
+SET url = 'https://i.pinimg.com/1200x/83/aa/55/83aa55d9f211a99ba0b7276a4802ae07.jpg'
+WHERE id = '3a324a60-6865-4367-825e-79986192a467';

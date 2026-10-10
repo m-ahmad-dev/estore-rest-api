@@ -1,4 +1,4 @@
-import { shippingConfig } from '../../core/configs/env.js';
+import env, { shippingConfig } from '../../core/configs/env.js';
 import AppError from '../../core/utils/error.utils.js';
 
 const DEFAULT_PARCEL = {
@@ -15,6 +15,24 @@ export const fetchRatesAndLowestRate = async (orderData) => {
     throw AppError.badRequest(
       'Invalid shipping data: customer name and address are required.'
     );
+  }
+
+  if (shippingConfig.provider === 'MOCK') {
+    if (env.NODE_ENV === 'production') {
+      throw AppError.internal('SHIPPING_PROVIDER=MOCK is disabled in production. Configure Shippo with a live token.');
+    }
+    const fee = Number(shippingConfig.shippo.mockShippingFee ?? 0);
+    if (!Number.isFinite(fee) || fee < 0) {
+      throw AppError.internal('MOCK_SHIPPING_FEE must be a non-negative number.');
+    }
+    return { rateObjectId: null, carrier: 'Standard Shipping', fee, mock: true };
+  }
+
+  if (shippingConfig.provider !== 'SHIPPO') {
+    throw AppError.internal(`Unsupported SHIPPING_PROVIDER: ${shippingConfig.provider}`);
+  }
+  if (!shippingConfig.shippo.apiToken) {
+    throw AppError.internal('SHIPPO_API_TOKEN is required when SHIPPING_PROVIDER=SHIPPO.');
   }
 
   const shipmentResponse = await fetch(
@@ -59,17 +77,65 @@ export const fetchRatesAndLowestRate = async (orderData) => {
     );
   }
 
-  const rates = shipmentData.rates || [];
-  if (rates.length === 0) {
-    throw new Error(
-      'No shipping rates found for the provided address routing.'
+  if (!shipmentData.object_id) {
+    throw new Error('Shippo returned a shipment without an object ID.');
+  }
+
+  // Shippo's default rate response may be denominated in the sender's currency,
+  // not the store's currency. Explicitly request a converted quote rather than
+  // accidentally treating (for example) USD shipping as PKR.
+  const currency = String(env.STRIPE_CURRENCY || 'pkr').toUpperCase();
+  const ratesUrl = `https://api.goshippo.com/shipments/${encodeURIComponent(shipmentData.object_id)}/rates/${encodeURIComponent(currency)}?results=100`;
+  let convertedRates = [];
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const convertedResponse = await fetch(ratesUrl, {
+      headers: {
+        Authorization: `ShippoToken ${shippingConfig.shippo.apiToken}`,
+      },
+    });
+    const convertedData = await convertedResponse.json();
+    if (!convertedResponse.ok) {
+      throw new Error(`Shippo currency conversion failed: ${convertedData.detail || convertedData.error || 'Unable to retrieve rates in store currency.'}`);
+    }
+
+    const returnedRates = Array.isArray(convertedData)
+      ? convertedData
+      : (convertedData.results || convertedData.rates || []);
+    const targetRates = returnedRates.filter(
+      (rate) => String(rate.currency || rate.amount_currency || '').toUpperCase() === currency &&
+        Number.isFinite(Number(rate.amount)) &&
+        Number(rate.amount) >= 0 && rate.object_id
+    );
+    if (targetRates.length > 0) {
+      convertedRates = targetRates;
+      break;
+    }
+    convertedRates = [];
+
+    const statusResponse = await fetch(
+      `https://api.goshippo.com/shipments/${encodeURIComponent(shipmentData.object_id)}`,
+      { headers: { Authorization: `ShippoToken ${shippingConfig.shippo.apiToken}` } }
+    );
+    const statusData = await statusResponse.json();
+    if (!statusResponse.ok) {
+      throw new Error(`Shippo shipment status lookup failed: ${statusData.detail || statusData.error || 'Unknown error'}`);
+    }
+    if (statusData.status === 'ERROR') {
+      throw new Error('Shippo could not calculate shipping rates for the provided address.');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  if (convertedRates.length === 0) {
+    throw AppError.badRequest(
+      `No shipping rates could be returned in ${currency}. Check Shippo currency support and carrier configuration.`
     );
   }
 
-  const lowestRate = rates.reduce(
-    (min, rate) =>
-      Number(rate.amount) < Number(min.amount) ? rate : min,
-    rates[0]
+  const lowestRate = convertedRates.reduce(
+    (min, rate) => Number(rate.amount) < Number(min.amount) ? rate : min,
+    convertedRates[0]
   );
 
   return {
@@ -81,6 +147,15 @@ export const fetchRatesAndLowestRate = async (orderData) => {
 
 // 2. Asynchronous background phase: Background processing loop
 export const purchaseLabelAsync = async (rateObjectId) => {
+  if (!rateObjectId) {
+    throw AppError.badRequest('A Shippo rate ID is required to purchase a shipping label.');
+  }
+  if (env.NODE_ENV === 'production' && shippingConfig.provider === 'MOCK') {
+    throw AppError.internal('Mock shipping is disabled in production.');
+  }
+  if (shippingConfig.provider !== 'SHIPPO' || !shippingConfig.shippo.apiToken) {
+    throw AppError.internal('Shipping label purchase requires SHIPPING_PROVIDER=SHIPPO and SHIPPO_API_TOKEN.');
+  }
   const transactionResponse = await fetch(
     'https://api.goshippo.com/transactions',
     {
@@ -153,6 +228,9 @@ export const purchaseLabelAsync = async (rateObjectId) => {
 };
 
 export const cancelShippoShipment = async (shippoTransactionId) => {
+  if (shippingConfig.provider !== 'SHIPPO' || !shippingConfig.shippo.apiToken) {
+    throw AppError.internal('Shippo shipment cancellation is not configured.');
+  }
   if (!shippoTransactionId) {
     throw AppError.badRequest(
       'No valid identifier found for shipment cancellation.'

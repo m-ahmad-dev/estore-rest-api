@@ -61,6 +61,18 @@ const WishlistModel = {
     });
   },
 
+  findByCustomerAndProduct: async (
+    { customerId, productId },
+    db = prisma
+  ) => {
+    return await db.wishlists.findFirst({
+      where: {
+        customer_id: customerId,
+        product_id: productId,
+      },
+    });
+  },
+
   countBy: (where, db = prisma) => db.wishlists.count({ where }),
 
   deleteBy: async (id, db = prisma) => {

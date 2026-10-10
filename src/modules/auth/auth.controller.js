@@ -4,6 +4,7 @@ import {
   refreshCookieConfig,
 } from "../../core/utils/cookies.utils.js";
 import AppError from "../../core/utils/error.utils.js";
+import { getStorefrontUrl } from '../../core/utils/url.utils.js';
 import { asyncWrapper } from "../../core/utils/trycatch.js";
 import {
   forgotPasswordServices,
@@ -97,21 +98,22 @@ export const resetPassword = asyncWrapper(async (req, res) => {
 // Google OAuth CONTROLLERS
 
 export const googleAuthCallback = asyncWrapper(async (req, res) => {
+  const storefrontUrl = getStorefrontUrl();
+  if (!storefrontUrl) {
+    return res.status(503).json({
+      success: false,
+      message: 'Storefront URL is not configured for OAuth redirects.',
+    });
+  }
+
   try {
-    const { accessToken, refreshToken } = await handleGoogleAuthService(
-      req.user,
-    );
+    const { accessToken, refreshToken } = await handleGoogleAuthService(req.user);
 
     res.cookie("accessToken", accessToken, accessCookieConfig);
     res.cookie("refreshToken", refreshToken, refreshCookieConfig);
-
-    return res.redirect(
-      `${process.env.FRONTEND_URL}/auth/callback?login=success`,
-    );
+    return res.redirect(`${storefrontUrl}/auth/callback?login=success`);
   } catch (error) {
     console.error("OAuth Error Message:", error);
-    return res.redirect(
-      `${process.env.FRONTEND_URL}/auth/login?error=oauth_failed`,
-    );
+    return res.redirect(`${storefrontUrl}/auth/login?error=oauth_failed`);
   }
 });

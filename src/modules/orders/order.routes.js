@@ -41,6 +41,14 @@ router.get(
   orderControllers.lookupGuestOrder
 );
 
+router.post(
+  '/orders/:id/payment-session',
+  validateUUID,
+  softAuth,
+  validate(orderSchema.retryOrderPaymentSchema),
+  orderControllers.createOrderPaymentSession
+);
+
 router.get(
   '/orders/:id',
   validateUUID,
@@ -89,6 +97,13 @@ adminRouter.patch(
   authorizePermission('orders.update_status'),
   validate(orderSchema.updateOrderPaymentRecordSchema),
   orderControllers.updateOrderPaymentRecord
+);
+
+adminRouter.post(
+  '/:id/refund',
+  validateUUID,
+  authorizePermission('orders.update_status'),
+  orderControllers.refundOrderPayment
 );
 
 adminRouter.patch(

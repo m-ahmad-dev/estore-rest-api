@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import env from "../../core/configs/env.js";
 import passwordResetTemplate from "../../core/templates/reset_password.template.js";
+import { getStorefrontUrl } from '../../core/utils/url.utils.js';
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -12,7 +13,12 @@ const transporter = nodemailer.createTransport({
 
 const EmailService = {
   sendPasswordResetEmail: async ({ to, token }) => {
-    const resetLink = `${env.FRONTEND_URL}/reset-password?token=${token}`;
+    const storefrontUrl = getStorefrontUrl();
+    if (!storefrontUrl) {
+      console.error('[EMAIL CONFIG] STORE_FRONTEND_URL is required in production.');
+      return;
+    }
+    const resetLink = `${storefrontUrl}/auth/reset-password?token=${encodeURIComponent(token)}`;
 
     try {
       const info = await transporter.sendMail({

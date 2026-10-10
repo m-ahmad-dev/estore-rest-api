@@ -1,23 +1,23 @@
-# 1. Node.js base image
-FROM node:24
+FROM node:24-slim
 
-# 2. Container working directory
+ENV NODE_ENV=development
 WORKDIR /app
 
-# 3. Copy dependencies files to the working directory
-COPY package*.json ./
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev --no-audit --no-fund
 
-# 4. Install dependencies
-RUN npm install
+COPY --chown=node:node . .
+# Prisma Client generation does not need a live database, but Prisma's config
+# expects a URL to be present at build time.
+RUN DATABASE_URL="postgresql://build:build@127.0.0.1:5432/build" npx prisma generate \
+  && npm cache clean --force \
+  && chown -R node:node /app
 
-# 5. Copy the rest of the application code to the working directory
-COPY . .
+ENV NODE_ENV=production
+USER node
 
-# 6. Generate Prisma client
-RUN npx prisma generate
-
-# 7. Expose port 3000
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
-# 8. Start the application
 CMD ["npm", "start"]

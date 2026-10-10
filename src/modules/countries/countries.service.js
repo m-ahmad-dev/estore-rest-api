@@ -20,9 +20,16 @@ const buildResponse = (country) => ({
 });
 
 export const getAllCountries = async (query) => {
-  const { search, is_active, order = 'asc' } = query;
+  const { search, order = 'asc' } = query;
 
   const where = {};
+
+  const is_active =
+    query.is_active === 'true' || query.is_active === true
+      ? true
+      : query.is_active === 'false' || query.is_active === false
+        ? false
+        : undefined;
 
   if (is_active !== undefined) {
     where.is_active = is_active;

@@ -4,12 +4,14 @@
   "description": "E-commerce REST API built with Node.js, Express, and PostgreSQL using Prisma ORM.",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test \"tests/**/*.test.js\"",
     "start": "node -r dotenv/config server.js",
     "dev": "node  --trace-deprecation -r dotenv/config --watch server.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "format": "prettier --write \"**/*.{js,json,md}\""
+    "format": "prettier --write \"**/*.{js,json,md}\"",
+    "db:generate": "prisma generate",
+    "db:migrate:deploy": "prisma migrate deploy"
   },
   "keywords": [],
   "author": "",

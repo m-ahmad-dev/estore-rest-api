@@ -75,7 +75,7 @@ productRoutes.delete(
 productRoutes.patch(
   '/admin/products/:id/restore',
   validateUUID,
-  authorizePermission('product.edit'),
+  authorizePermission('products.edit'),
   productControllers.restoreProduct
 );
 
@@ -89,11 +89,20 @@ productRoutes.delete(
 // ===== Nested Routes For Variants & Images =====
 
 // Variant Routes
-productRoutes.use('/products/:productId/variants', variantPublicRoutes);
-productRoutes.use('/admin/products/:productId/variants', variantAdminRoutes);
+productRoutes.use(
+  '/products/:productId/variants',
+  variantPublicRoutes
+);
+productRoutes.use(
+  '/admin/products/:productId/variants',
+  variantAdminRoutes
+);
 
 // Images Routes
 productRoutes.use('/products/:productId/images', imagesPublicRoutes);
-productRoutes.use('/admin/products/:productId/images', imagesAdminRoutes);
+productRoutes.use(
+  '/admin/products/:productId/images',
+  imagesAdminRoutes
+);
 
 export default productRoutes;

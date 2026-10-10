@@ -72,6 +72,18 @@ export const OrderModel = {
       where,
       include: {
         items: { select: ORDER_ITEM_SELECTS },
+        customer: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            email: true,
+            phone: true,
+            is_active: true,
+            created_at: true,
+            deleted_at: true,
+          },
+        },
         shipments: {
           select: {
             id: true,

@@ -17,6 +17,7 @@ import {
   deleteImagesByProduct,
   insertImagesService,
 } from './images/images.service.js';
+import prisma from '../../core/configs/db.js';
 
 export const createProductService = async (payload) => {
   const { variants, images, ...productFields } = payload;
@@ -181,10 +182,30 @@ export const getAllProductsService = async (
 
   const limit = parseInt(limitRaw, 10) || 10;
 
-  // Build query filters
+  // 1. Resolve category & descendant IDs if category filter exists
+  let categoryIds = null;
+  if (category) {
+    categoryIds = await getCategoryAndDescendantIds(category);
+
+    // If the category slug doesn't exist at all, return empty payload early
+    if (categoryIds.length === 0) {
+      return {
+        success: true,
+        message: 'Products retrieved successfully',
+        products: [],
+        pagination: {
+          limit,
+          hasNextPage: false,
+          nextCursor: null,
+        },
+      };
+    }
+  }
+
+  // 2. Build query filters with resolved category IDs
   const where = buildWhereClause({
     q,
-    category,
+    categoryIds,
     min_price,
     max_price,
     isAdmin,
@@ -192,10 +213,10 @@ export const getAllProductsService = async (
     status,
   });
 
-  // Build sorting
+  // 3. Build sorting
   const orderBy = buildOrderBy(sort, order);
 
-  // Fetch products
+  // 4. Fetch products
   const rawProducts = await ProductModel.findMany(
     where,
     orderBy,
@@ -203,7 +224,7 @@ export const getAllProductsService = async (
     cursor || undefined
   );
 
-  // Handle pagination
+  // 5. Handle pagination
   const hasNextPage = rawProducts.length > limit;
   const productsData = hasNextPage
     ? rawProducts.slice(0, limit)
@@ -213,7 +234,7 @@ export const getAllProductsService = async (
     ? productsData[productsData.length - 1].id
     : null;
 
-  // Format products based on user role
+  // 6. Format products based on user role
   const formatter = isAdmin
     ? formatProductForAdmin
     : formatProductForPublic;
@@ -245,9 +266,53 @@ export const checkProductExist = async (productId, client) => {
 };
 
 // Helper Functions:
+/**
+ * Helper to get target category ID and all descendant subcategory IDs recursively
+ */
+async function getCategoryAndDescendantIds(categorySlug) {
+  // 1. Get the target category
+  const targetCategory = await prisma.categories.findUnique({
+    where: { slug: categorySlug },
+    select: { id: true },
+  });
+
+  if (!targetCategory) return [];
+
+  // 2. Fetch all categories (id and parent_id) to map hierarchy in memory
+  const allCategories = await prisma.categories.findMany({
+    select: { id: true, parent_id: true },
+  });
+
+  // 3. Build parent -> children lookup map
+  const childrenMap = new Map();
+  for (const cat of allCategories) {
+    if (cat.parent_id) {
+      if (!childrenMap.has(cat.parent_id)) {
+        childrenMap.set(cat.parent_id, []);
+      }
+      childrenMap.get(cat.parent_id).push(cat.id);
+    }
+  }
+
+  // 4. Perform BFS/queue traversal to collect target ID and all descendant IDs
+  const resultIds = [targetCategory.id];
+  const queue = [targetCategory.id];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    const children = childrenMap.get(currentId) || [];
+    for (const childId of children) {
+      resultIds.push(childId);
+      queue.push(childId);
+    }
+  }
+
+  return resultIds;
+}
+
 const buildWhereClause = ({
   q,
-  category,
+  categoryIds,
   min_price,
   max_price,
   isAdmin,
@@ -276,8 +341,9 @@ const buildWhereClause = ({
     ];
   }
 
-  if (category) {
-    where.category = { slug: category };
+  // Filter products belonging to target category or any descendant subcategory
+  if (categoryIds && categoryIds.length > 0) {
+    where.category_id = { in: categoryIds };
   }
 
   // Price range filter

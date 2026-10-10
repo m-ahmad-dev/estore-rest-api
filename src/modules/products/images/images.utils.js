@@ -3,7 +3,12 @@ import AppError from '../../../core/utils/error.utils.js';
 export const SORT_GAP = 10;
 const IMAGE_KEY_PREFIX = 'products/';
 const IMAGE_KEY_PATTERN = /^[a-zA-Z0-9/_\-.]+$/;
-const ALLOWED_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp']);
+const ALLOWED_IMAGE_EXTENSIONS = new Set([
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+]);
 
 const countPrimaries = (images) =>
   images.filter((img) => img.is_primary === true).length;
@@ -26,7 +31,9 @@ export const validateAtMostOnePrimary = (images, helpers) => {
 };
 
 export const validateExactlyOnePrimary = (images, helpers) => {
-  return countPrimaries(images) === 1 ? images : helpers.error('any.invalid');
+  return countPrimaries(images) === 1
+    ? images
+    : helpers.error('any.invalid');
 };
 
 // Validates and normalizes an image key with security checks:
@@ -38,7 +45,9 @@ const validateImageKey = (key) => {
   const normalized = key.trim();
 
   if (!IMAGE_KEY_PATTERN.test(normalized)) {
-    throw AppError.badRequest('Image key contains invalid characters');
+    throw AppError.badRequest(
+      'Image key contains invalid characters'
+    );
   }
 
   if (!normalized.startsWith(IMAGE_KEY_PREFIX)) {
@@ -52,7 +61,9 @@ const validateImageKey = (key) => {
     normalized.includes('./') ||
     normalized.startsWith('/')
   ) {
-    throw AppError.badRequest('Invalid image path - potential security risk');
+    throw AppError.badRequest(
+      'Invalid image path - potential security risk'
+    );
   }
 
   const extension = normalized.split('.').pop()?.toLowerCase();

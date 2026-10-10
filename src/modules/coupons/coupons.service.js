@@ -1,177 +1,232 @@
-import executeTransaction from '../../core/utils/dbTransaction.js';
+import prisma from '../../core/configs/db.js';
 import AppError from '../../core/utils/error.utils.js';
-import CouponsModel from './coupons.model.js';
 
-export const createCouponService = async (payload) => {
-  return await executeTransaction(async (client) => {
-    const existing = await CouponsModel.findByCode(
-      payload.code,
-      client
-    );
+const normalizeCouponCode = (code) =>
+  code?.trim().toUpperCase() || null;
 
-    if (existing) {
-      throw AppError.conflict(
-        'Coupon already exists',
-        `A coupon with code "${payload.code}" already exists.`
-      );
-    }
-
-    const now = new Date();
-    const data = {
-      ...payload,
-      starts_at: payload.starts_at || now,
-      expires_at: payload.expires_at || null,
-      value: payload.value,
-      min_order_value: payload.min_order_value || 0,
-      max_discount: payload.max_discount || null,
-      max_uses: payload.max_uses || null,
-    };
-
-    const coupon = await CouponsModel.create(data, client);
-
-    return {
-      success: true,
-      message: 'Coupon created successfully',
-      coupon,
-    };
-  });
+const normalizeDate = (value) => {
+  if (value === undefined) return undefined;
+  return value === null || value === '' ? null : new Date(value);
 };
 
-export const updateCouponService = async (id, payload) => {
-  return executeTransaction(async (client) => {
-    const existingCoupon = await CouponsModel.findById(id, client);
-    if (!existingCoupon) {
-      throw AppError.notFound(
-        'Coupon',
-        `No coupon found with id: ${id}`
-      );
-    }
-
-    // Guard Clauses & Validations
-    if (payload.code && payload.code !== existingCoupon.code) {
-      const codeExists = await CouponsModel.findByCode(
-        payload.code,
-        client
-      );
-      if (codeExists) {
-        throw AppError.conflict(
-          'Coupon code already exists',
-          `Another coupon with code "${payload.code}" already exists.`
-        );
-      }
-    }
-
-    if (
-      payload.type &&
-      payload.type !== existingCoupon.type &&
-      existingCoupon.used_count > 0
-    ) {
-      throw AppError.badRequest(
-        'Cannot change coupon type',
-        'Cannot change coupon type after it has been used.'
-      );
-    }
-
-    // Strips out undefined values dynamically using Object.fromEntries
-    const updateData = Object.fromEntries(
-      Object.entries({ ...payload }).filter(
-        ([_, val]) => val !== undefined
-      )
-    );
-    const updatedCoupon = await CouponsModel.update(
-      id,
-      updateData,
-      client
-    );
-
-    return {
-      success: true,
-      message: 'Coupon updated successfully',
-      coupon: updatedCoupon,
-    };
-  });
+export const findCouponByCode = async (code, client = prisma) => {
+  const normalizedCode = normalizeCouponCode(code);
+  return normalizedCode
+    ? client.coupons.findUnique({ where: { code: normalizedCode } })
+    : null;
 };
 
-export const getCouponById = async (id) => {
-  const coupon = await CouponsModel.findById(id);
+export const findCouponById = async (id, client = prisma) => {
+  return id ? client.coupons.findUnique({ where: { id } }) : null;
+};
+
+export const createCoupon = async (payload) => {
+  const data = {
+    code: normalizeCouponCode(payload.code),
+    type: payload.type,
+    value: payload.value,
+    min_order_value: payload.min_order_value ?? 0,
+    max_uses: payload.max_uses ?? null,
+    max_discount:
+      payload.type === 'FIXED'
+        ? null
+        : (payload.max_discount ?? null),
+    is_active: payload.is_active ?? true,
+    starts_at: payload.starts_at
+      ? new Date(payload.starts_at)
+      : new Date(),
+    expires_at: payload.expires_at
+      ? new Date(payload.expires_at)
+      : null,
+  };
+
+  return prisma.coupons.create({ data });
+};
+
+export const getCoupons = async (query = {}) => {
+  const { cursor, search, type } = query;
+
+  // Safety net: coerce to correct types in case middleware is bypassed
+  const limit = Math.min(
+    Math.max(parseInt(query.limit, 10) || 10, 1),
+    100
+  );
+  const is_active =
+    query.is_active === 'true' || query.is_active === true
+      ? true
+      : query.is_active === 'false' || query.is_active === false
+        ? false
+        : undefined;
+
+  const where = {
+    ...(search && {
+      code: { contains: search, mode: 'insensitive' },
+    }),
+    ...(is_active !== undefined && { is_active }),
+    ...(type && { type }),
+  };
+
+  const [rawItems, total] = await Promise.all([
+    prisma.coupons.findMany({
+      where,
+      take: limit + 1,
+      orderBy: { created_at: 'desc' },
+      ...(cursor && {
+        cursor: { id: cursor },
+        skip: 1,
+      }),
+    }),
+    prisma.coupons.count({ where }),
+  ]);
+
+  const hasNextPage = rawItems.length > limit;
+  const items = hasNextPage ? rawItems.slice(0, limit) : rawItems;
+  const nextCursor = hasNextPage ? items[items.length - 1].id : null;
+
+  return {
+    data: items,
+    meta: {
+      total,
+      limit,
+      nextCursor,
+      hasNextPage,
+    },
+  };
+};
+
+export const getCouponById = async (id, client = prisma) => {
+  const coupon = await findCouponById(id, client);
 
   if (!coupon) {
-    throw AppError.notFound(
-      'Coupon',
-      `No coupon found with id: ${id}`
-    );
+    const error = new Error('Coupon not found');
+    error.statusCode = 404;
+    throw error;
   }
 
   return coupon;
 };
 
-// Fetch all coupons with cursor-based pagination and filters
-export const getAllCoupons = async (queryParams) => {
-  const {
-    cursor,
-    search,
-    is_active: isActive,
-    type,
-    limit = 10,
-  } = queryParams;
-  const take = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100);
-  const where = {};
+export const updateCoupon = async (id, payload) => {
+  const existingCoupon = await getCouponById(id);
+  const updatedType = payload.type ?? existingCoupon.type;
 
-  if (search) {
-    where.code = { contains: search, mode: 'insensitive' };
+  const updateData = {};
+  if (payload.code !== undefined)
+    updateData.code = normalizeCouponCode(payload.code);
+  if (payload.type !== undefined) updateData.type = payload.type;
+  if (payload.value !== undefined) updateData.value = payload.value;
+  if (payload.min_order_value !== undefined)
+    updateData.min_order_value = payload.min_order_value;
+  if (payload.max_uses !== undefined)
+    updateData.max_uses = payload.max_uses;
+  if (payload.is_active !== undefined)
+    updateData.is_active = payload.is_active;
+  if (payload.starts_at !== undefined)
+    updateData.starts_at = normalizeDate(payload.starts_at);
+  if (payload.expires_at !== undefined)
+    updateData.expires_at = normalizeDate(payload.expires_at);
+
+  if (updatedType === 'FIXED') {
+    updateData.max_discount = null;
+  } else if (payload.max_discount !== undefined) {
+    updateData.max_discount = payload.max_discount;
   }
 
-  if (isActive !== undefined) {
-    where.is_active = isActive === 'true';
+  return prisma.coupons.update({
+    where: { id },
+    data: updateData,
+  });
+};
+
+export const deleteCoupon = async (id) => {
+  await getCouponById(id);
+  return prisma.coupons.delete({ where: { id } });
+};
+
+export const validateAndCalculateDiscount = async (
+  code,
+  orderSubtotal,
+  client = prisma
+) => {
+  const coupon = await findCouponByCode(code, client);
+
+  if (!coupon) throw AppError.badRequest('Invalid coupon code.');
+  if (!coupon.is_active)
+    throw AppError.badRequest('This coupon is currently inactive.');
+
+  const now = new Date();
+  if (coupon.starts_at && now < coupon.starts_at)
+    throw AppError.badRequest('This coupon is not yet active.');
+  if (coupon.expires_at && now > coupon.expires_at)
+    throw AppError.badRequest('This coupon has expired.');
+  if (
+    coupon.max_uses !== null &&
+    coupon.used_count >= coupon.max_uses
+  ) {
+    throw AppError.badRequest(
+      'This coupon has reached its maximum usage limit.'
+    );
   }
 
-  if (type) {
-    where.type = type;
+  const subtotal = Number(orderSubtotal);
+  const minOrderValue = Number(coupon.min_order_value ?? 0);
+
+  if (subtotal < minOrderValue) {
+    throw AppError.badRequest(
+      `Minimum order value of ${minOrderValue.toFixed(2)} is required for this coupon.`
+    );
   }
 
-  const queryOptions = {
-    where,
-    orderBy: { id: 'asc' },
-    take: take + 1,
-  };
+  const couponValue = Number(coupon.value);
+  let discountAmount = 0;
 
-  // Handle cursor pagination
-  if (cursor) {
-    const decodedId = Buffer.from(cursor, 'base64').toString('ascii');
-    queryOptions.cursor = { id: decodedId };
-    queryOptions.skip = 1;
+  if (coupon.type === 'PERCENTAGE') {
+    const percentageDiscount = (subtotal * couponValue) / 100;
+    discountAmount =
+      coupon.max_discount !== null
+        ? Math.min(percentageDiscount, Number(coupon.max_discount))
+        : percentageDiscount;
+  } else if (coupon.type === 'FIXED') {
+    discountAmount = Math.min(couponValue, subtotal);
   }
-
-  const records = await CouponsModel.findAll(queryOptions);
-
-  const hasNextPage = records.length > take;
-  const coupons = hasNextPage ? records.slice(0, take) : records;
-
-  // Generate next cursor from the last record
-  const nextCursor =
-    hasNextPage && coupons.length > 0
-      ? Buffer.from(
-          coupons[coupons.length - 1].id.toString()
-        ).toString('base64')
-      : null;
 
   return {
-    success: true,
-    message: 'Data retrieved successfully',
-    coupons,
-    meta: {
-      limit: take,
-      hasNextPage,
-      nextCursor,
-    },
+    coupon,
+    discountAmount: Number(discountAmount.toFixed(2)),
   };
 };
 
-// Shared Service
-export const findCouponByCode = async (code, client) => {
-  return await CouponsModel.findByCode(code, client);
+export const incrementCouponUsage = async (couponId, tx = prisma) => {
+  const coupon = await tx.coupons.findUnique({
+    where: { id: couponId },
+    select: { id: true, max_uses: true },
+  });
+  if (!coupon) throw AppError.badRequest('Coupon is no longer available.');
+
+  const now = new Date();
+  const conditions = [
+    { OR: [{ starts_at: null }, { starts_at: { lte: now } }] },
+    { OR: [{ expires_at: null }, { expires_at: { gt: now } }] },
+  ];
+  if (coupon.max_uses !== null && coupon.max_uses !== undefined) {
+    conditions.push({ used_count: { lt: coupon.max_uses } });
+  }
+
+  // Conditional update prevents concurrent checkouts exceeding max_uses.
+  const result = await tx.coupons.updateMany({
+    where: { id: couponId, is_active: true, AND: conditions },
+    data: { used_count: { increment: 1 } },
+  });
+  if (result.count !== 1) {
+    throw AppError.badRequest('This coupon is no longer available or has reached its usage limit.');
+  }
+  return tx.coupons.findUnique({ where: { id: couponId } });
 };
 
-export const findCouponById = async (id, client) => {
-  return await CouponsModel.findById(id, client);
+export const decrementCouponUsage = async (couponId, tx = prisma) => {
+  if (!couponId) return { count: 0 };
+  return tx.coupons.updateMany({
+    where: { id: couponId, used_count: { gt: 0 } },
+    data: { used_count: { decrement: 1 } },
+  });
 };

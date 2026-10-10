@@ -19,10 +19,14 @@ class AppError extends Error {
   }
 
   static validationError(details) {
-    return new AppError('Validation failed', 400, {
-      errorCode: 'VALIDATION_ERROR',
-      details,
-    });
+    return new AppError(
+      'Please check your input and try again.',
+      400,
+      {
+        errorCode: 'VALIDATION_ERROR',
+        details,
+      }
+    );
   }
 
   // 401

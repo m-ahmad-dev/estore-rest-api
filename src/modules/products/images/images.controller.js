@@ -3,7 +3,9 @@ import { asyncWrapper } from '../../../core/utils/trycatch.js';
 
 // Get all images for a product:
 export const getProductImages = asyncWrapper(async (req, res) => {
-  const result = await imagesServices.getProductImagesService(req.params);
+  const result = await imagesServices.getProductImagesService(
+    req.params
+  );
 
   res.status(200).json({
     success: true,
@@ -12,18 +14,20 @@ export const getProductImages = asyncWrapper(async (req, res) => {
   });
 });
 
-export const getProductImagesAdmin = asyncWrapper(async (req, res) => {
-  const result = await imagesServices.getProductImagesService({
-    productId: req.params.productId,
-    isAdmin: true,
-  });
+export const getProductImagesAdmin = asyncWrapper(
+  async (req, res) => {
+    const result = await imagesServices.getProductImagesService({
+      productId: req.params.productId,
+      isAdmin: true,
+    });
 
-  res.status(200).json({
-    success: true,
-    message: 'Product images retrieved successfully',
-    data: result,
-  });
-});
+    res.status(200).json({
+      success: true,
+      message: 'Product images retrieved successfully',
+      data: result,
+    });
+  }
+);
 
 export const getImage = asyncWrapper(async (req, res) => {
   const { productId, imageId } = req.params;
@@ -116,7 +120,10 @@ export const reorderProductImages = asyncWrapper(async (req, res) => {
 // Delete a product image:
 export const deleteImage = asyncWrapper(async (req, res) => {
   const { productId, imageId } = req.params;
-  const result = await imagesServices.deleteImageService(productId, imageId);
+  const result = await imagesServices.deleteImageService(
+    productId,
+    imageId
+  );
 
   res.status(200).json({
     success: true,

@@ -1,4 +1,4 @@
-import CategoryModel from "./category.model.js";
+import CategoryModel from './category.model.js';
 
 // Maximum allowed category nesting depth.
 // Prevents runaway recursion if corrupt circular data reaches the DB.
@@ -20,7 +20,7 @@ export async function isDescendant(
   targetId,
   client,
   visited = new Set(),
-  depth = 0,
+  depth = 0
 ) {
   if (depth > MAX_DEPTH || visited.has(rootId)) return false;
   visited.add(rootId);
@@ -29,7 +29,15 @@ export async function isDescendant(
 
   for (const child of children) {
     if (child.id === targetId) return true;
-    if (await isDescendant(child.id, targetId, client, visited, depth + 1))
+    if (
+      await isDescendant(
+        child.id,
+        targetId,
+        client,
+        visited,
+        depth + 1
+      )
+    )
       return true;
   }
 
@@ -54,11 +62,18 @@ export async function getAncestors(parentId, client) {
     const categ = await CategoryModel.findById(currentId, client);
     if (!categ) break;
 
-    ancestors.unshift({ id: categ.id, name: categ.name, slug: categ.slug });
+    ancestors.unshift({
+      id: categ.id,
+      name: categ.name,
+      slug: categ.slug,
+    });
     currentId = categ.parent_id;
   }
 
-  return ancestors.map((ancestor, index) => ({ ...ancestor, level: index }));
+  return ancestors.map((ancestor, index) => ({
+    ...ancestor,
+    level: index,
+  }));
 }
 
 /**
@@ -86,14 +101,22 @@ function mergeRules(childRules = [], parentRules = []) {
  * @param {number} depth      - Internal recursion guard.
  * @returns {Promise<Array>}
  */
-export async function getInheritedAttributes(categoryId, client, depth = 0) {
+export async function getInheritedAttributes(
+  categoryId,
+  client,
+  depth = 0
+) {
   if (depth > MAX_DEPTH) return [];
 
   const category = await CategoryModel.findById(categoryId, client);
   if (!category) return [];
 
   const parentRules = category.parent_id
-    ? await getInheritedAttributes(category.parent_id, client, depth + 1)
+    ? await getInheritedAttributes(
+        category.parent_id,
+        client,
+        depth + 1
+      )
     : [];
 
   const currentRules = Array.isArray(category.attribute_rules)

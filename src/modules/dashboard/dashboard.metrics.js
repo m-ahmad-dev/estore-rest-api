@@ -293,3 +293,14 @@ export const getPaymentMethodDistribution = async (
     client
   );
 };
+
+export const getPendingReviews = async (client) => {
+  return DashboardRepository.reviews.count(
+    { status: 'PENDING' },
+    client
+  );
+};
+
+export const getCouponStats = async (client, now) => {
+  return DashboardRepository.coupons.statusBreakdown(now, client);
+};

@@ -18,8 +18,11 @@ export const createWishlist = async (customerId, body) => {
       );
     }
 
-    const isExist = await WishlistModel.findByProductId(
-      body.product_id,
+    const isExist = await WishlistModel.findByCustomerAndProduct(
+      {
+        customerId,
+        productId: body.product_id,
+      },
       client
     );
 

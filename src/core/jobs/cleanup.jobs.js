@@ -83,7 +83,16 @@ const cleanupCarts = async (now) => {
 
 // Initialize the cleanup cron job //
 const startCleanupJob = () => {
-  cron.schedule(env.CLEANUP_SCHEDULE, async () => {
+  const configuredSchedule = env.CLEANUP_SCHEDULE;
+  const fallbackSchedule = '0 3 * * *';
+  const schedule = configuredSchedule && cron.validate(configuredSchedule)
+    ? configuredSchedule
+    : fallbackSchedule;
+  if (configuredSchedule && schedule !== configuredSchedule) {
+    console.warn(`[CRON CONFIG] Invalid CLEANUP_SCHEDULE; using ${fallbackSchedule}.`);
+  }
+
+  cron.schedule(schedule, async () => {
     const now = new Date();
 
     const [authResult, cartResult] = await Promise.allSettled([

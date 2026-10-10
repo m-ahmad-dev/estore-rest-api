@@ -71,7 +71,11 @@ const ProdImagesModel = {
     return result._max.sort_order ?? 0;
   },
 
-  clearPrimary: async (productId, excludeImageId = null, db = prisma) => {
+  clearPrimary: async (
+    productId,
+    excludeImageId = null,
+    db = prisma
+  ) => {
     return db.product_images.updateMany({
       where: {
         product_id: productId,

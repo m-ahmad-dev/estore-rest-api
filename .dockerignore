@@ -1,2 +1,8 @@
+.git
+node_modules
 .env
-node_modules/
+.env.*
+coverage
+logs
+*.log
+npm-debug.log*

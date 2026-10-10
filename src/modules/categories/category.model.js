@@ -25,6 +25,13 @@ const CategoryModel = {
       where: { id },
       select: {
         ...CATEGORY_SELECT_FIELDS,
+        parent: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
         _count: { select: { products: true } },
       },
     });
@@ -44,13 +51,22 @@ const CategoryModel = {
     });
   },
 
-  findAllWithPagination: async (search, skip, limit, sortBy, sortOrder, db = prisma) => {
+  findAllWithPagination: async (
+    search,
+    skip,
+    limit,
+    sortBy,
+    sortOrder,
+    db = prisma
+  ) => {
     const where = search
       ? {
           OR: [
             { name: { contains: search, mode: 'insensitive' } },
             { slug: { contains: search, mode: 'insensitive' } },
-            { description: { contains: search, mode: 'insensitive' } },
+            {
+              description: { contains: search, mode: 'insensitive' },
+            },
           ],
         }
       : {};

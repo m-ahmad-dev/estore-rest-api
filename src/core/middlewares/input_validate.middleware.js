@@ -40,6 +40,8 @@ const validate = (targetSchema, source = 'body') => {
         message: message.replace(/"/g, ''),
       }));
 
+      console.log(error);
+
       return next(AppError.validationError(details));
     }
 

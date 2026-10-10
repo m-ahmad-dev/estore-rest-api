@@ -1,5 +1,8 @@
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+  PutObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
 import { s3Client } from '../../core/configs/s3.config.js';
 import env from '../../core/configs/env.js';
 import { getCDNUrl } from '../../core/utils/url.utils.js';
@@ -12,7 +15,9 @@ export const getUploadPresignedUrl = async (fileName, fileType) => {
     ContentType: fileType,
   });
 
-  const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 900 });
+  const uploadUrl = await getSignedUrl(s3Client, command, {
+    expiresIn: 900,
+  });
 
   return {
     uploadUrl,

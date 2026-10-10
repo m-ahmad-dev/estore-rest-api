@@ -6,9 +6,6 @@ import { findOrderById } from '../orders/order.service.js';
 import { findManyVariantsByIds } from '../products/variants/variants.service.js';
 import { findCustomerById } from '../customer/customer.service.js';
 
-/**
- * Creates a new product review with comprehensive validation and business rules.
- */
 export const createProductReview = async (
   customerId,
   productId,
@@ -17,7 +14,6 @@ export const createProductReview = async (
   const { order_id, rating, title, comment } = body;
 
   return executeTransaction(async (client) => {
-    // Verify order exists and belongs to customer
     const order = await findOrderById(order_id, client);
     if (!order) {
       throw AppError.notFound(
@@ -33,7 +29,6 @@ export const createProductReview = async (
       );
     }
 
-    // Business rule: Only delivered orders
     if (order.status !== 'DELIVERED') {
       throw AppError.badRequest(
         'Invalid Request',
@@ -41,7 +36,6 @@ export const createProductReview = async (
       );
     }
 
-    // Verify product is active and exists
     const product = await checkProductExist(productId, client);
     if (!product?.exists || product.deleted || !product.active) {
       throw AppError.notFound(
@@ -50,7 +44,6 @@ export const createProductReview = async (
       );
     }
 
-    // Verify product was part of the order
     const variantIds = order.items
       .map((item) => item.variant_id)
       .filter(Boolean);
@@ -67,7 +60,6 @@ export const createProductReview = async (
       );
     }
 
-    // Prevent duplicate reviews
     const existingReview = await ReviewsModel.findByComposite(
       { order_id, productId, customerId },
       client
@@ -80,7 +72,6 @@ export const createProductReview = async (
       );
     }
 
-    // Prepare and save review
     const reviewData = {
       customer_id: customerId,
       product_id: productId,
@@ -112,7 +103,6 @@ export const createProductReview = async (
 
 export const updateReview = async (customerId, reviewId, body) => {
   return executeTransaction(async (client) => {
-    // Fetch existing review
     const review = await ReviewsModel.findById(reviewId, client);
 
     if (!review) {
@@ -122,7 +112,6 @@ export const updateReview = async (customerId, reviewId, body) => {
       );
     }
 
-    // Authorization check
     if (review.customer_id !== customerId) {
       throw AppError.forbidden(
         'Access Denied',
@@ -130,7 +119,6 @@ export const updateReview = async (customerId, reviewId, body) => {
       );
     }
 
-    // Business Rule: If review is already approved, reset to PENDING for re-moderation
     const updateData = { ...body };
 
     if (review.status === 'APPROVED') {
@@ -140,7 +128,6 @@ export const updateReview = async (customerId, reviewId, body) => {
       updateData.rejection_reason = null;
     }
 
-    // Perform update
     const updatedReview = await ReviewsModel.update(
       { id: reviewId },
       updateData,
@@ -176,14 +163,11 @@ export const deleteService = async (userId, reviewId, isAdmin) => {
       );
     }
 
-    if (!isAdmin) {
-      // Authorization check
-      if (review.customer_id !== userId) {
-        throw AppError.forbidden(
-          'Access Denied',
-          'You do not have permission to modify this review.'
-        );
-      }
+    if (!isAdmin && review.customer_id !== userId) {
+      throw AppError.forbidden(
+        'Access Denied',
+        'You do not have permission to modify this review.'
+      );
     }
 
     await ReviewsModel.deleteById(reviewId, client);
@@ -231,7 +215,6 @@ export const getCustomerReviews = async (customerId, query = {}) => {
       success: true,
       reviews: reviews.map((r) => ({
         id: r.id,
-        product_id: r.product_id,
         rating: r.rating,
         title: r.title,
         comment: r.comment,
@@ -242,6 +225,14 @@ export const getCustomerReviews = async (customerId, query = {}) => {
         created_at: r.created_at,
         updated_at: r.updated_at,
         approved_at: r.approved_at,
+        product: r.product
+          ? {
+              id: r.product.id,
+              name: r.product.name,
+              slug: r.product.slug,
+              image: r.product.images?.[0]?.url || null,
+            }
+          : null,
       })),
       pagination: {
         limit,
@@ -288,7 +279,6 @@ export const findForProduct = async (productId, query = {}) => {
         },
         client
       ),
-
       ReviewsModel.stats(productId, client),
     ]);
 
@@ -338,7 +328,6 @@ export const getAllReviews = async (query = {}) => {
   } = query;
 
   return executeTransaction(async (client) => {
-    // Validate filters only if provided
     if (product_id) {
       const product = await checkProductExist(product_id, client);
       if (!product?.exists || product.deleted || !product.active) {
@@ -354,7 +343,7 @@ export const getAllReviews = async (query = {}) => {
       if (!customer || customer.deleted_at || !customer.is_active) {
         throw AppError.notFound(
           'Customer',
-          'Customer not exit or inactive.'
+          'Customer not exist or inactive.'
         );
       }
     }
@@ -400,6 +389,7 @@ export const getAllReviews = async (query = {}) => {
             id: r.product_id,
             name: r.product_name,
             slug: r.product_slug,
+            image: r.product_image || null,
           },
           customer: {
             id: r.customer_id,
@@ -429,10 +419,20 @@ export const getReviewDetails = async (reviewId) => {
     );
   }
 
+  const { images, ...productData } = review.product || {};
+
   return {
     success: true,
-    message: 'Data retrieved successfuly',
-    review,
+    message: 'Data retrieved successfully',
+    review: {
+      ...review,
+      product: review.product
+        ? {
+            ...productData,
+            image: images?.[0]?.url || null,
+          }
+        : null,
+    },
   };
 };
 
@@ -460,7 +460,6 @@ export const updateReviewStatus = async (adminId, reviewId, body) => {
       updateData.approved_by = null;
       updateData.approved_at = null;
     } else {
-      // PENDING
       updateData.rejection_reason = null;
       updateData.approved_by = null;
       updateData.approved_at = null;

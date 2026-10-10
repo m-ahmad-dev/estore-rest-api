@@ -28,7 +28,6 @@ const findActiveCart = async (client, customerId, sessionId) => {
 
   if (!cart) return null;
 
-  // Expire carts that have passed their TTL
   if (cart.expires_at && new Date(cart.expires_at) < new Date()) {
     await CartModel.markAsAbandoned(cart.id, client);
     return null;
@@ -37,8 +36,6 @@ const findActiveCart = async (client, customerId, sessionId) => {
   return cart;
 };
 
-// Ensures an active cart exists and returns it,
-// otherwise throws a 404 error
 const requireActiveCart = async (client, customerId, sessionId) => {
   const cart = await findActiveCart(client, customerId, sessionId);
 
@@ -49,7 +46,6 @@ const requireActiveCart = async (client, customerId, sessionId) => {
   return cart;
 };
 
-// Finds an active cart or creates a new one
 const findOrCreateActiveCart = async (
   client,
   customerId,
@@ -81,18 +77,22 @@ const assertCouponApplicable = (coupon, subtotal) => {
   if (coupon.expires_at && new Date(coupon.expires_at) < now) {
     throw AppError.badRequest('This coupon has expired');
   }
-  if (coupon.max_uses && coupon.used_count >= coupon.max_uses) {
+  if (
+    coupon.max_uses !== null &&
+    coupon.max_uses !== undefined &&
+    coupon.used_count >= coupon.max_uses
+  ) {
     throw AppError.badRequest(
       'This coupon has reached its usage limit'
     );
   }
   if (
-    coupon.min_order_value &&
+    coupon.min_order_value !== null &&
+    coupon.min_order_value !== undefined &&
     subtotal < Number(coupon.min_order_value)
   ) {
     throw AppError.badRequest(
-      `Minimum order value for this coupon is 
-      ${Number(coupon.min_order_value).toFixed(2)}`
+      `Minimum order value for this coupon is ${Number(coupon.min_order_value).toFixed(2)}`
     );
   }
 };
@@ -106,13 +106,19 @@ const isCouponStillValid = (coupon, subtotal) => {
     return false;
   if (coupon.expires_at && new Date(coupon.expires_at) < now)
     return false;
-  if (coupon.max_uses && coupon.used_count >= coupon.max_uses)
-    return false;
   if (
-    coupon.min_order_value &&
-    subtotal < Number(coupon.min_order_value)
+    coupon.max_uses !== null &&
+    coupon.max_uses !== undefined &&
+    coupon.used_count >= coupon.max_uses
   )
     return false;
+  if (
+    coupon.min_order_value !== null &&
+    coupon.min_order_value !== undefined &&
+    subtotal < Number(coupon.min_order_value)
+  ) {
+    return false;
+  }
 
   return true;
 };
@@ -137,8 +143,7 @@ export const addCartItem = async (user, payload) => {
 
     if (availableStock < quantity) {
       throw AppError.badRequest(
-        `Only ${availableStock} unit${availableStock === 1 ? '' : 's'}
-         available for this variant`
+        `Only ${availableStock} unit${availableStock === 1 ? '' : 's'} available for this variant`
       );
     }
 
@@ -156,8 +161,7 @@ export const addCartItem = async (user, payload) => {
     if (existing) {
       throw AppError.conflict(
         'Item already in cart',
-        `This variant is already in your cart. 
-        Use the update endpoint to change quantity.`
+        'This variant is already in your cart. Use the update endpoint to change quantity.'
       );
     }
 
@@ -234,15 +238,13 @@ export const updateCartItem = async (itemId, user, payload) => {
 
     if (newQuantity < 1) {
       throw AppError.badRequest(
-        `Quantity cannot be less than 1. 
-        Use the delete endpoint to remove the item.`
+        'Quantity cannot be less than 1. Use the delete endpoint to remove the item.'
       );
     }
 
     if (newQuantity > availableStock) {
       throw AppError.badRequest(
-        `Insufficient stock. Only ${availableStock} 
-        unit${availableStock === 1 ? '' : 's'} available.`
+        `Insufficient stock. Only ${availableStock} unit${availableStock === 1 ? '' : 's'} available.`
       );
     }
 
@@ -310,7 +312,7 @@ export const clearCart = async (user) => {
 
     return {
       success: true,
-      message: 'Cart cleared sucessfully',
+      message: 'Cart cleared successfully',
     };
   });
 };
@@ -336,7 +338,6 @@ export const applyCoupon = async (user, code) => {
     const coupon = await findCouponByCode(code, client);
     const subtotal = cartUtils.calculateSubtotal(items);
 
-    // Throws descriptive errors if coupon is not applicable
     assertCouponApplicable(coupon, subtotal);
 
     await CartModel.update(cart.id, { coupon_id: coupon.id }, client);
@@ -414,12 +415,15 @@ export const getCart = async (user) => {
           value: Number(coupon.value),
         };
       } else {
-        // Coupon expired or became invalid — clear it silently
         await CartModel.update(cart.id, { coupon_id: null }, client);
       }
     }
 
-    const pricing = cartUtils.buildPricingSummary(subtotal, discount);
+    const pricing = cartUtils.buildPricingSummary(
+      subtotal,
+      discount,
+      0
+    );
 
     return {
       success: true,
@@ -435,10 +439,6 @@ export const getCart = async (user) => {
   });
 };
 
-/**
- * Intended for internal use by checkout / order creation services.
- * @returns {{ cart, items, subtotal, discount, total, coupon } | null}
- */
 export const resolveCartForCheckout = async (
   user,
   checkoutContext,
@@ -459,7 +459,6 @@ export const resolveCartForCheckout = async (
     );
   }
 
-  // Enrich and validate items (product lookup moved here)
   const productIds = [
     ...new Set(
       items.map((item) => item.variant?.product_id).filter(Boolean)
@@ -484,7 +483,7 @@ export const resolveCartForCheckout = async (
     }
     return {
       ...item,
-      product_name: product.name, // Enrich for order items
+      product_name: product.name,
     };
   });
 
@@ -508,7 +507,6 @@ export const resolveCartForCheckout = async (
   };
 };
 
-// Private Helper
 const buildEmptyCartResponse = () => ({
   success: true,
   message: 'Cart retrieved successfully',
