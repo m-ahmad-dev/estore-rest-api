@@ -716,6 +716,8 @@ curl http://localhost:3000/health
 
 The project is designed for deployment on any Node.js hosting platform (such as Render) with PostgreSQL and external service credentials provided via environment variables.
 
+Apply pending Prisma migrations against the deployment database before starting the API. The Docker image runs `npm run db:migrate:deploy` before `npm start`; for other hosting platforms, configure `npm run db:migrate:deploy` as a release/pre-deploy command. This keeps the deployed database aligned with `prisma/schema.prisma` (including shipment columns such as `rate_id`).
+
 ```mermaid
 graph TD
     %% Styling definitions
