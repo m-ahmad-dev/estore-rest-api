@@ -5,7 +5,7 @@ const GUEST_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
 const generateGuestId = () => crypto.randomUUID();
 
 const identifyCartUser = (req, res, next) => {
-  if (req.user) {
+  if (req.user?.role === 'customer') {
     req.cartUser = {
       customer_id: req.user.id,
       session_id: null,
