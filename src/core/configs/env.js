@@ -14,16 +14,16 @@ const properties = {
   OWNER_PASSWORD: () => process.env.OWNER_PASSWORD,
   OWNER_NAME: () => process.env.OWNER_NAME,
   // CORS
-  // Comma-separated list of browser origins allowed by CORS.
-  FRONTEND_URL: () => process.env.FRONTEND_URL || 'http://localhost:5173,http://localhost:5174',
+  FRONTEND_URL: () =>
+    process.env.FRONTEND_URL ||
+    'http://localhost:5173,http://localhost:5174',
   STORE_FRONTEND_URL: () => process.env.STORE_FRONTEND_URL,
-  ADMIN_FRONTEND_URL: () => process.env.ADMIN_FRONTEND_URL || 'http://localhost:5174',
+  ADMIN_FRONTEND_URL: () =>
+    process.env.ADMIN_FRONTEND_URL || 'http://localhost:5174',
   // Auth cookies
-  // lax (default) = frontend + API same-site / behind a proxy; none = cross-site (forces Secure)
   COOKIE_SAME_SITE: () => process.env.COOKIE_SAME_SITE,
-  // Optional shared cookie domain, e.g. .example.com
   COOKIE_DOMAIN: () => process.env.COOKIE_DOMAIN,
-  // Google auth cedentials:
+  // Google auth credentials:
   GOOGLE_CLIENT_SECRET: () => process.env.GOOGLE_CLIENT_SECRET,
   GOOGLE_CLIENT_ID: () => process.env.GOOGLE_CLIENT_ID,
   CALLBACK_URL: () => process.env.CALLBACK_URL,
@@ -39,10 +39,12 @@ const properties = {
   B2_KEY_ID: () => process.env.B2_KEY_ID,
   B2_APP_KEY: () => process.env.B2_APP_KEY,
   B2_BUCKET_NAME: () => process.env.B2_BUCKET_NAME,
-  IMAGE_BASE_URL: () => process.env.IMAGE_BASE_URL || process.env.IMAGES_BASE_URL,
+  IMAGE_BASE_URL: () =>
+    process.env.IMAGE_BASE_URL || process.env.IMAGES_BASE_URL,
   STRIPE_SECRET_KEY: () => process.env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: () => process.env.STRIPE_WEBHOOK_SECRET,
-  STRIPE_CURRENCY: () => (process.env.STRIPE_CURRENCY || 'pkr').toLowerCase(),
+  STRIPE_CURRENCY: () =>
+    (process.env.STRIPE_CURRENCY || 'pkr').toLowerCase(),
   MOCK_SHIPPING_FEE: () => process.env.MOCK_SHIPPING_FEE || '0',
 
   // Postman Docs URL
@@ -60,9 +62,29 @@ for (const [key, getter] of Object.entries(properties)) {
 
 export default env;
 
+export const normalizeShippingProvider = (provider) => {
+  if (!provider) {
+    return process.env.NODE_ENV === 'production' ? 'SHIPPO' : 'MOCK';
+  }
+  const normalizedProvider = String(provider)
+    .trim()
+    .toUpperCase()
+    .replace(/[-_]/g, ' ');
+  if (
+    normalizedProvider === 'SHIPPO EXPRESS' ||
+    normalizedProvider === 'SHIPPO'
+  ) {
+    return 'SHIPPO';
+  }
+  return normalizedProvider;
+};
+
 // Shipping configuration:
 export const shippingConfig = {
-  provider: (process.env.SHIPPING_PROVIDER || (process.env.NODE_ENV === 'production' ? 'SHIPPO' : 'MOCK')).toUpperCase(),
+  provider: normalizeShippingProvider(
+    process.env.SHIPPING_PROVIDER ||
+      (process.env.NODE_ENV === 'production' ? 'SHIPPO' : 'MOCK')
+  ),
   shippo: {
     apiToken: process.env.SHIPPO_API_TOKEN,
     mockShippingFee: process.env.MOCK_SHIPPING_FEE || '0',
